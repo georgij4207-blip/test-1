@@ -1076,9 +1076,15 @@
       h.shakeSnd = (h.shakeSnd ?? 0) - dt;
       if (h.shakeSnd <= 0) { shakeSound(); h.shakeSnd = 0.3; }
       const k = (t - HIT.stun) / (HIT.shake - HIT.stun);
-      player.tilt = Math.sin(t * 70) * 0.35 * (0.55 + 0.45 * Math.abs(Math.sin(t * 4))) * (1 - k * 0.5);   // трясётся волнами
-      h.nextKick -= dt;
-      if (h.nextKick <= 0) { kickRays(2.2, 5 * Math.sign(Math.sin(t * 70)) || 5); h.nextKick = 0.05; }
+      // плавно: амплитуда нарастает и затухает по синусу, частота постепенно снижается
+      const env = Math.sin(Math.PI * k);
+      h.ph = (h.ph || 0) + dt * (30 - 14 * k);
+      const wave = Math.sin(h.ph);
+      player.tilt = wave * 0.3 * env;
+      // лучики подталкиваем мягко — только в моменты смены направления
+      const dir = wave >= 0 ? 1 : -1;
+      if (h.dir && dir !== h.dir) kickRays(0.8 * env, 2.5 * env * dir);
+      h.dir = dir;
       return;
     }
     // 4. «бах!» — подскок и бежит дальше, препятствие уже позади
