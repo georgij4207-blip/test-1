@@ -191,6 +191,7 @@
   }
   .sound-btn[aria-pressed="false"] { opacity: 0.6; text-decoration: line-through; }
   .sound-btn:focus-visible { outline: 2px dashed var(--line); outline-offset: 2px; }
+  .sound-btn:disabled { opacity: 0.4; cursor: default; }
   footer { margin-top: 10px; color: var(--line-soft); font-size: 15px; text-align: center; }
   @media (max-height: 460px) {
     header { margin-bottom: 6px; }
@@ -205,6 +206,7 @@
 <header>
   <h1>✳ Искорка</h1>
   <div class="head-right">
+    <button class="sound-btn" id="pauseBtn" type="button" disabled>❚❚ Пауза</button>
     <button class="sound-btn" id="soundBtn" type="button" aria-pressed="true">Звук вкл</button>
   </div>
 </header>
@@ -228,10 +230,10 @@
       <div class="keys only-keys">
         <p><kbd>Пробел</kbd> или <kbd>↑</kbd> — прыжок (дольше держите — выше прыжок)</p>
         <p><kbd>↓</kbd> — пригнуться, в воздухе — быстро упасть</p>
-        <p><kbd>Esc</kbd> — пауза · <kbd>M</kbd> — звук</p>
+        <p><kbd>Esc</kbd> или кнопка «Пауза» — пауза · <kbd>M</kbd> — звук</p>
       </div>
       <div class="only-touch">
-        <p>Тап по правой половине — прыжок<br>Удержание на левой половине — пригнуться<br>Свайп вниз — тоже пригнуться</p>
+        <p>Тап по правой половине — прыжок<br>Удержание на левой половине — пригнуться<br>Свайп вниз — тоже пригнуться<br>Кнопка «Пауза» вверху — пауза</p>
       </div>
       <div class="start-actions">
         <button class="btn" id="startBtn" type="button">Начать</button>
@@ -258,6 +260,7 @@
   <div class="overlay hidden" id="pauseScreen">
     <div class="panel">
       <h2>Пауза</h2>
+      <button class="btn" id="resumeBtn" type="button">Продолжить</button>
     </div>
   </div>
 
@@ -436,6 +439,7 @@
   function startGame() {
     reset();
     mode = 'running';
+    pauseBtn.disabled = false;
     startScreen.classList.add('hidden');
     overScreen.classList.add('hidden');
     pauseScreen.classList.add('hidden');
@@ -475,16 +479,25 @@
     player.fastFall = on && !player.onGround;
   }
 
+  const pauseBtn = document.getElementById('pauseBtn');
   function pause() {
     if (mode !== 'running') return;
     mode = 'paused';
+    player.duck = false;
     pauseScreen.classList.remove('hidden');
   }
   function resume() {
+    if (mode !== 'paused') return;
     mode = 'running';
     pauseScreen.classList.add('hidden');
     last = performance.now();
   }
+  pauseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    pauseBtn.blur();
+    if (mode === 'running') pause(); else resume();
+  });
+  document.getElementById('resumeBtn').addEventListener('click', (e) => { e.stopPropagation(); resume(); });
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyM') { ensureAudio(); toggleSound(); return; }
@@ -495,8 +508,8 @@
     } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
       e.preventDefault();
       setDuck(true);
-    } else if ((e.code === 'Escape' || e.code === 'KeyP') && mode === 'running') {
-      pause();
+    } else if (e.code === 'Escape' || e.code === 'KeyP') {
+      if (mode === 'running') pause(); else resume();
     } else if (e.code === 'Enter' && mode !== 'running') {
       e.preventDefault();
       jumpPress();
@@ -1008,6 +1021,7 @@
 
   function gameOver(o) {
     mode = 'over';
+    pauseBtn.disabled = true;
     overAt = performance.now();
     shake = 1;
     player.duck = false;
