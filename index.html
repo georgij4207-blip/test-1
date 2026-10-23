@@ -359,7 +359,7 @@
   const LIVES = 3;     // запасные жизни
   let lives = LIVES, invuln = 0;
   // Мультяшная реакция на удар: отлёт назад → оглушение → встряска → «бах!» и дальше
-  const HIT = { knock: 0.6, stun: 3.6, shake: 4.5 };   // границы фаз, секунды от удара
+  const HIT = { knock: 0.6, stun: 2.1, shake: 4.5 };   // границы фаз, секунды от удара
   let hitSeq = null;   // { t, o, last, kicked }
 
   let mode = 'ready';  // ready | running | paused | over
@@ -1063,7 +1063,7 @@
       h.shakeSnd = (h.shakeSnd ?? 0) - dt;
       if (h.shakeSnd <= 0) { shakeSound(); h.shakeSnd = 0.3; }
       const k = (t - HIT.stun) / (HIT.shake - HIT.stun);
-      player.tilt = Math.sin(t * 70) * 0.35 * (1 - k * 0.6);
+      player.tilt = Math.sin(t * 70) * 0.35 * (0.55 + 0.45 * Math.abs(Math.sin(t * 4))) * (1 - k * 0.5);   // трясётся волнами
       h.nextKick -= dt;
       if (h.nextKick <= 0) { kickRays(2.2, 5 * Math.sign(Math.sin(t * 70)) || 5); h.nextKick = 0.05; }
       return;
