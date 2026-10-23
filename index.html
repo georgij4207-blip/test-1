@@ -218,8 +218,8 @@
       <h3>Правила</h3>
       <ul class="rules">
         <li>Искорка бежит сама. Ваша задача — пробежать как можно дальше.</li>
-        <li><b>Стопки бумаг и блоки кода</b> стоят на земле — их нужно перепрыгнуть.</li>
-        <li><b>Летающие ошибки</b> появляются после 180 очков. Через низкие прыгайте, под средними пригибайтесь, под высокими можно просто пробежать.</li>
+        <li><b>Офисный хлам на земле</b> — стопки бумаг, блоки кода, кружки, мониторы, коробки, клавиатуры, кактусы и конусы — нужно перепрыгнуть.</li>
+        <li><b>Летающие помехи</b> — ошибки, жуки-баги, бумажные самолётики и часы-дедлайны — появляются после 180 очков. Через низкие прыгайте, под средними пригибайтесь, под высокими можно просто пробежать.</li>
         <li><b>Батут.</b> Если приземлиться на препятствие сверху, Искорка отскочит и получит <b>+25 очков</b>.</li>
         <li>Удар сбоку или снизу — игра окончена.</li>
         <li>Очки идут за пройденное расстояние. Скорость постепенно растёт. Рекорд сохраняется в браузере.</li>
@@ -596,12 +596,25 @@
   }
 
   // Шажок: короткий «тук» с понижением тона + щелчок; ножки звучат чуть по-разному
+  // Шажок: мягкий приглушённый «пум» — синус с плавной атакой через фильтр низких частот
   function stepSound(foot) {
     if (!audio || muted || audio.state !== 'running') return;
     const t = audio.currentTime;
-    const base = (foot ? 560 : 470) * rand(0.94, 1.06);
-    blip(t, 'triangle', base, base * 0.42, 0.22, 0.06);
-    noiseHit(t, 'bandpass', 2400, 1.3, 0.1, 0.035);
+    const base = (foot ? 230 : 200) * rand(0.95, 1.05);
+    const o = audio.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(base, t);
+    o.frequency.exponentialRampToValueAtTime(base * 0.55, t + 0.08);
+    const f = audio.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 700;
+    const g = audio.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.13, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
+    o.connect(f); f.connect(g); g.connect(master);
+    o.start(t); o.stop(t + 0.12);
+    noiseHit(t, 'lowpass', 500, 0.5, 0.035, 0.05);
   }
 
   // Приземление: мягкий «бум»
@@ -647,10 +660,19 @@
     papers: ['ТЗ, ВЕРСИЯ 17', 'ДЕДЛАЙН ВЧЕРА', 'ОТЧЁТЫ', 'ПРОЧИТАТЬ ПОТОМ'],
     code: ['ЛЕГАСИ-КОД', 'НЕ ТРОГАТЬ!', 'TODO: ПОЧИНИТЬ', 'РАБОТАЕТ — НЕ ЛЕЗЬ'],
     error: ['ОШИБКА 404', 'БАГ (ЛЕТАЕТ)', 'УТЕЧКА ПАМЯТИ', 'NULL'],
+    mug: ['КОФЕ №4', 'ОСТЫЛ', 'ТОПЛИВО'],
+    monitor: ['СИНИЙ ЭКРАН', 'ВСЁ ПРОПАЛО', 'ПЕРЕЗАГРУЗИТЬ?'],
+    boxes: ['ХРУПКО', 'ПЕРЕЕЗД НА НОВЫЙ СЕРВЕР', 'СТАРЫЕ ЗАДАЧИ'],
+    keyboard: ['CTRL+Z НЕ ПОМОЖЕТ', 'КЛАВИАТУРА'],
+    cactus: ['ПРИВЕТ ДИНОЗАВРИКУ', 'НЕ ПОЛИВАТЬ'],
+    cone: ['В РАЗРАБОТКЕ', 'ОСТОРОЖНО: РЕЛИЗ'],
+    bug: ['БАГ (НАСТОЯЩИЙ)', 'ЭТО НЕ ФИЧА'],
+    plane: ['ПИСЬМО ОТ НАЧАЛЬСТВА', 'СРОЧНО!'],
+    clock: ['ДЕДЛАЙН', 'ВЧЕРА В 18:00'],
   };
   let noteNo = 0;
   function maybeNote(o) {
-    if (Math.random() < 0.4) o.note = (++noteNo) + '. ' + pick(NOTES[o.type]);
+    if (Math.random() < 0.4) o.note = (++noteNo) + '. ' + pick(NOTES[o.kind] || NOTES[o.type]);
   }
 
   function spawn() {
@@ -662,14 +684,15 @@
       // летающая ошибка: низко (прыгать), средне (пригнуться), высоко (пробежать)
       const level = pick([GROUND - 16, GROUND - 42, GROUND - 42, GROUND - 76]);
       obstacles.push({
-        type: 'error', kind: Math.random() < 0.6 ? 'err' : 'warn',
+        type: 'error', kind: pick(['err', 'err', 'err', 'warn', 'warn', 'bug', 'bug', 'plane', 'clock']),
         x, y: level, baseY: level, w: 34, h: 26, phase: Math.random() * 6, extra: rand(0.06, 0.16),
       });
       maybeNote(obstacles[obstacles.length - 1]);
       return 34;
     }
 
-    if (r < 0.62) {
+    const type = pick(['papers', 'papers', 'code', 'code', 'mug', 'monitor', 'boxes', 'keyboard', 'cactus', 'cone']);
+    if (type === 'papers') {
       // стопки бумаг (1–3 рядом)
       const maxCount = speed > baseSpeed * 1.35 ? 3 : speed > baseSpeed * 1.15 ? 2 : 1;
       const count = 1 + ((Math.random() * maxCount) | 0);
@@ -684,11 +707,20 @@
       return cx - x;
     }
 
-    // блок кода
-    const wide = speed > baseSpeed * 1.2 && Math.random() < 0.4;
-    const w = wide ? rand(62, 78) : rand(42, 54);
-    const h = rand(38, 56);
-    obstacles.push({ type: 'code', x, y: GROUND - h, w, h, seed: Math.random() * 1000 });
+    let w, h, n = 1;
+    if (type === 'code') {
+      const wide = speed > baseSpeed * 1.2 && Math.random() < 0.4;
+      w = wide ? rand(62, 78) : rand(42, 54); h = rand(38, 56);
+    } else if (type === 'mug') { w = rand(26, 30); h = rand(24, 30); }
+    else if (type === 'monitor') { w = rand(44, 52); h = rand(44, 52); }
+    else if (type === 'boxes') {
+      n = speed > baseSpeed * 1.1 && Math.random() < 0.5 ? 2 : 1;
+      w = rand(34, 42); h = n * rand(24, 29);
+    }
+    else if (type === 'keyboard') { w = rand(56, 72); h = 13; }
+    else if (type === 'cactus') { w = rand(26, 30); h = rand(40, 54); }
+    else { w = rand(24, 28); h = rand(30, 40); }   // конус
+    obstacles.push({ type, x, y: GROUND - h, w, h, n, seed: Math.random() * 1000 });
     maybeNote(obstacles[obstacles.length - 1]);
     return w;
   }
@@ -877,7 +909,11 @@
     }
   }
 
-  const HIT_NAMES = { papers: 'стопку бумаг', code: 'блок кода', error: 'летающую ошибку' };
+  const HIT_NAMES = {
+    papers: 'стопку бумаг', code: 'блок кода', err: 'летающую ошибку', warn: 'летающую ошибку',
+    bug: 'жука-бага', plane: 'бумажный самолётик', clock: 'часы-дедлайн', mug: 'кружку кофе',
+    monitor: 'монитор', boxes: 'коробки', keyboard: 'клавиатуру', cactus: 'кактус', cone: 'конус',
+  };
   function gameOver(o) {
     mode = 'over';
     overAt = performance.now();
@@ -891,14 +927,15 @@
     recordLine.innerHTML = newRecord
       ? '<span class="record">Новый рекорд! ✳</span>'
       : 'Рекорд: <b>' + hi + '</b>';
-    document.getElementById('planHit').textContent = 'Врезаться в ' + (HIT_NAMES[o && o.type] || 'препятствие') + '.';
+    document.getElementById('planHit').textContent = 'Врезаться в ' + (o && (HIT_NAMES[o.kind] || HIT_NAMES[o.type]) || 'препятствие') + '.';
     setTimeout(() => { if (mode === 'over') overScreen.classList.remove('hidden'); }, 350);
   }
 
   // ---------- Отрисовка: чертёж «от руки» ----------
   const FONT = 'Neucha, "Comic Sans MS", "Segoe Print", cursive';
   const J = 0.75;   // насколько «гуляют» линии
-  let boil = 0;     // кадр «кипения» линий — меняется 8 раз в секунду, как в мультфильме
+  let boil = 0;
+  let T = 0;        // время для анимаций (пар над кофе)     // кадр «кипения» линий — меняется 8 раз в секунду, как в мультфильме
 
   function nz(a, b) {
     const v = Math.sin(a * 127.1 + b * 311.7 + boil * 74.7) * 43758.5453;
@@ -1222,6 +1259,222 @@
   }
 
   // Летающая ошибка: значок с крылышками и полосками скорости
+  // Кружка кофе с паром
+  function drawMug(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    const bw = o.w - 8;
+    ink(1.6);
+    sCircle(bw, 6 + (o.h - 6) * 0.45, 5, 6.5);
+    ctx.stroke();
+    sPoly([[0, 6], [bw, 6], [bw - 1.5, o.h], [1.5, o.h]], true);
+    paper();
+    ctx.stroke();
+    ink(1, 0.7);
+    ctx.beginPath();
+    sLine(4, 6 + (o.h - 6) * 0.4, bw - 4, 6 + (o.h - 6) * 0.4);
+    sLine(4, 6 + (o.h - 6) * 0.62, bw - 4, 6 + (o.h - 6) * 0.62);
+    ctx.stroke();
+    ink(1.2, 0.7);
+    ctx.beginPath();
+    for (let k = 0; k < 2; k++) {
+      const sx = bw * (0.32 + k * 0.36);
+      for (let i = 0; i <= 8; i++) {
+        const y = 3 - i * 1.6;
+        const x = sx + Math.sin(i * 0.9 + T * 6 + k * 2) * 2;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Монитор с грустным смайликом
+  function drawMonitor(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    const sh = o.h - 12;
+    ink(1.6);
+    ctx.beginPath(); sLine(o.w / 2, sh, o.w / 2, o.h - 4); ctx.stroke();
+    sRect(o.w / 2 - 11, o.h - 4, 22, 4); paper(); ctx.stroke();
+    sRect(0, 0, o.w, sh); paper(); ctx.stroke();
+    ink(1.1, 0.7);
+    sRect(4, 4, o.w - 8, sh - 8); ctx.stroke();
+    write(':(', o.w / 2, sh / 2 + 1, Math.min(18, sh * 0.5), 'center', 1, 'middle');
+    ctx.restore();
+  }
+
+  // Картонные коробки со скотчем
+  function drawBoxes(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    const bh = o.h / o.n;
+    for (let i = 0; i < o.n; i++) {
+      const y = o.h - (i + 1) * bh;
+      const off = i ? Math.sin(o.seed) * 3 : 0;
+      ink(1.6);
+      sRect(off, y, o.w, bh); paper(); ctx.stroke();
+      ink(1.1, 0.7);
+      ctx.beginPath();
+      sLine(off + o.w / 2 - 4, y, off + o.w / 2 - 4, y + bh * 0.35);
+      sLine(off + o.w / 2 + 4, y, off + o.w / 2 + 4, y + bh * 0.35);
+      ctx.stroke();
+      if (i === 0) write('ХРУПКО', off + o.w / 2, y + bh * 0.68, 10, 'center', 0.9, 'middle');
+    }
+    ctx.restore();
+  }
+
+  // Клавиатура: низкая и длинная
+  function drawKeyboard(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ink(1.6);
+    sRect(0, 0, o.w, o.h); paper(); ctx.stroke();
+    ink(1, 0.75);
+    ctx.beginPath();
+    for (let row = 0; row < 2; row++) {
+      for (let kx = 4 + row * 2; kx + 5 < o.w - 3; kx += 7) {
+        ctx.rect(kx, 3 + row * 5, 5, 3.4);
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Кактус в горшке — привет динозаврику из Chrome
+  function drawCactus(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    const ph = 12, cx = o.w / 2, top = 0, bodyH = o.h - ph;
+    ink(1.6);
+    roundRect(cx - 11, bodyH * 0.38, 6, bodyH * 0.3, 3); paper(); ctx.stroke();
+    roundRect(cx - 9, bodyH * 0.6, 6, 4, 2); paper();
+    roundRect(cx + 5, bodyH * 0.26, 6, bodyH * 0.28, 3); paper(); ctx.stroke();
+    roundRect(cx + 3, bodyH * 0.46, 6, 4, 2); paper();
+    roundRect(cx - 5, top, 10, bodyH + 2, 5); paper(); ctx.stroke();
+    ink(1, 0.7);
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const y = 6 + i * (bodyH - 10) / 3;
+      ctx.moveTo(cx - 5, y); ctx.lineTo(cx - 8, y - 1.5);
+      ctx.moveTo(cx + 5, y + 3); ctx.lineTo(cx + 8, y + 1.5);
+    }
+    ctx.stroke();
+    ink(1.6);
+    sPoly([[1, bodyH], [o.w - 1, bodyH], [o.w - 4, o.h], [4, o.h]], true);
+    paper();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Дорожный конус «в разработке»
+  function drawCone(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    const bh = 5, ch = o.h - bh;
+    ink(1.6);
+    sPoly([[o.w / 2 - 3, 0], [o.w / 2 + 3, 0], [o.w - 4, ch], [4, ch]], true);
+    paper();
+    ctx.stroke();
+    sRect(0, ch, o.w, bh); paper(); ctx.stroke();
+    ink(1.3, 0.85);
+    ctx.beginPath();
+    for (const k of [0.38, 0.68]) {
+      const y = ch * k;
+      const half = 3 + (o.w / 2 - 7) * k;
+      sLine(o.w / 2 - half, y, o.w / 2 + half, y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Летающие помехи: жук-баг, бумажный самолётик, часы-дедлайн
+  function drawBug(o) {
+    const flap = Math.sin(o.phase * 1.6);
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ink(1.2, 0.6);
+    ctx.beginPath(); sLine(16, -3, 30, -3); sLine(16, 4, 26, 4); ctx.stroke();
+    ink(1.2, 0.9);
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const lx = -5 + i * 5, sw = Math.sin(o.phase * 2 + i) * 2;
+      ctx.moveTo(lx, 5); ctx.lineTo(lx - 3 + sw, 11);
+    }
+    ctx.moveTo(-13, -3); ctx.quadraticCurveTo(-17, -10, -20, -9);
+    ctx.moveTo(-12, -4); ctx.quadraticCurveTo(-13, -12, -16, -13);
+    ctx.stroke();
+    ink(1.3);
+    for (const k of [-1, 1]) {
+      ctx.save();
+      ctx.translate(k * 3, -6);
+      ctx.rotate(-0.4 + k * 0.25 + flap * 0.35 * k);
+      sCircle(0, -5, 4.5, 8); paper(); ctx.stroke();
+      ctx.restore();
+    }
+    ink(1.7);
+    sCircle(0, 0, 11, 7.5); paper(); ctx.stroke();
+    sCircle(-12, -1, 4.5); paper(); ctx.stroke();
+    ink(1, 0.8);
+    ctx.beginPath(); sLine(-4, -6, -4, 6); sLine(3, -7, 3, 7); ctx.stroke();
+    ctx.fillStyle = C.line;
+    ctx.beginPath(); ctx.arc(-13.5, -2, 1.1, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPlane(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ctx.rotate(Math.sin(o.phase * 0.4) * 0.12);
+    ink(1.2, 0.6);
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath(); sLine(18, 0, 38, 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ink(1.6);
+    sPoly([[-15, 0], [15, -8], [6, 1], [15, 7]], true);
+    paper();
+    ctx.stroke();
+    ctx.beginPath(); sLine(-15, 0, 6, 1); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawClock(o) {
+    const flap = Math.sin(o.phase);
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ink(1.3);
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.translate(side * 9, -2);
+      ctx.rotate(side * (0.5 + flap * 0.55));
+      sCircle(side * 8, -2, 8, 4); paper(); ctx.stroke();
+      ctx.restore();
+    }
+    ink(1.6);
+    sCircle(-7, -10, 4); paper(); ctx.stroke();
+    sCircle(7, -10, 4); paper(); ctx.stroke();
+    ink(1.8);
+    sCircle(0, 0, 11.5); paper(); ctx.stroke();
+    ink(1.6);
+    const a1 = o.phase * 1.5, a2 = o.phase * 0.25;
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a1) * 8, Math.sin(a1) * 8);
+    ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a2) * 5, Math.sin(a2) * 5);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const DRAW = {
+    papers: (o) => drawPapers(o), code: (o) => drawCode(o), mug: drawMug, monitor: drawMonitor,
+    boxes: drawBoxes, keyboard: drawKeyboard, cactus: drawCactus, cone: drawCone,
+  };
+  function drawFlyer(o) {
+    if (o.kind === 'bug') drawBug(o);
+    else if (o.kind === 'plane') drawPlane(o);
+    else if (o.kind === 'clock') drawClock(o);
+    else drawError(o);
+  }
+
   function drawError(o) {
     const flap = Math.sin(o.phase);
     ctx.save();
@@ -1405,6 +1658,7 @@
 
   function draw(t) {
     boil = Math.floor(t * 8);
+    T = t;
     ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
     if (shake > 0) ctx.translate(Math.sin(t * 90) * shake * 3, Math.cos(t * 70) * shake * 2);
 
@@ -1425,9 +1679,8 @@
     drawGround();
 
     for (const o of obstacles) {
-      if (o.type === 'papers') drawPapers(o);
-      else if (o.type === 'code') drawCode(o);
-      else drawError(o);
+      if (o.type === 'error') drawFlyer(o);
+      else DRAW[o.type](o);
     }
     for (const o of obstacles) drawNote(o);
 
