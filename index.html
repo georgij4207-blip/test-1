@@ -336,6 +336,27 @@
   let nextGap = 0, sinceSpawn = 0, flash = 0, shake = 0, overAt = 0, scroll = 0;
   let newRecord = false;
 
+  // ---------- Реплики ----------
+  const LINES = {
+    jump: ['Оп!', 'Хоп!'],
+    close: ['Фух!', 'Чуть не!'],
+    hit: ['Ой!', 'Ах!'],
+    milestone: ['Еду дальше!'],
+  };
+  const speech = { text: '', t: 0, dur: 0, prio: 0 };
+  let lastSpoke = -10;
+
+  function say(kind, prio, chance, cooldown) {
+    if (Math.random() > chance) return;
+    const now = performance.now() / 1000;
+    const busy = speech.t > 0 && speech.prio >= prio;
+    if (busy || now - lastSpoke < cooldown) return;
+    speech.text = pick(LINES[kind]);
+    speech.dur = speech.t = 1.15;
+    speech.prio = prio;
+    lastSpoke = now;
+  }
+
   function speedFactor() { return Math.max(0.78, Math.min(1, W / 800)); }
 
   function reset() {
@@ -347,6 +368,7 @@
     player.duck = false; player.jumpHeld = false; player.fastFall = false;
     player.squash = 0; player.spread = 0;
     sinceSpawn = 0; nextGap = W * 0.6; flash = 0; shake = 0; newRecord = false;
+    speech.t = 0; lastSpoke = -10;
   }
 
   function makeCloud(far, x) {
@@ -581,6 +603,8 @@
       if (p.life <= 0) particles.splice(i, 1);
     }
 
+    if (mode !== 'paused') speech.t = Math.max(0, speech.t - dt);
+
     // моргание
     player.blink -= dt;
     if (player.blink <= 0) { player.blinkT = 0.13; player.blink = rand(2, 4.5); }
@@ -605,6 +629,7 @@
     dist += speed * dt;
     const newScore = Math.floor(dist / 40);
     if (Math.floor(newScore / 100) > Math.floor(score / 100)) flash = 1.2;
+    if (Math.floor(newScore / 500) > Math.floor(score / 500)) say('milestone', 2, 1, 0);
     score = newScore;
     flash = Math.max(0, flash - dt);
 
@@ -655,7 +680,20 @@
         o.x -= speed * dt;
       }
       if (o.x + (o.w || 30) < -40) { obstacles.splice(i, 1); continue; }
-      if (overlap(pb, hitbox(o))) { gameOver(); break; }
+      const hb = hitbox(o);
+      if (overlap(pb, hb)) { gameOver(); break; }
+      if (!o.passed) {
+        if (hb.l < pb.r && hb.r > pb.l) {
+          // пока препятствие под/над искоркой — запоминаем минимальный зазор
+          const gap = Math.max(hb.t - pb.b, pb.t - hb.b);
+          o.minGap = Math.min(o.minGap ?? Infinity, gap);
+          if (!player.onGround) o.jumped = true;
+        } else if (hb.r <= pb.l) {
+          o.passed = true;
+          if (o.minGap < 10) say('close', 1, 0.7, 1.2);
+          else if (o.jumped) say('jump', 0, 0.3, 3);
+        }
+      }
     }
   }
 
@@ -666,6 +704,7 @@
     player.duck = false;
     duckBtn.classList.remove('active');
     puff(player.x, player.bottom - R, 14);
+    say('hit', 3, 1, 0);
     if (score > hi) { hi = score; newRecord = true; saveHi(hi); }
     finalScore.textContent = score;
     finalHi.textContent = hi;
@@ -819,6 +858,56 @@
     if (airborne && player.blinkT <= 0) ry = 3.8;
     drawEye(x - 0.5, eyeY, 2.5, ry, dead);
     drawEye(x + 5.8, eyeY, 2.5, ry, dead);
+
+    drawSpeech(x, cy - R * sy * (1 + player.spread * 0.2) - 6);
+  }
+
+  // Облачко-комикс над головой: выпрыгивает и плавно гаснет
+  function drawSpeech(hx, headTop) {
+    if (speech.t <= 0) return;
+    const age = speech.dur - speech.t;
+    const pop = age < 0.14 ? 0.6 + (age / 0.14) * 0.55 : age < 0.22 ? 1.15 - ((age - 0.14) / 0.08) * 0.15 : 1;
+    const alpha = Math.min(1, speech.t / 0.35);
+
+    ctx.save();
+    ctx.font = '800 13px ui-sans-serif, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+    const tw = ctx.measureText(speech.text).width;
+    const bw = tw + 16, bh = 22;
+    const tipX = hx + 6, tipY = headTop;
+    let bx = hx + 4 - bw * 0.25;
+    bx = Math.max(6, Math.min(W - bw - 6, bx));
+    const by = tipY - 9 - bh;
+
+    ctx.globalAlpha = alpha;
+    ctx.translate(tipX, tipY);
+    ctx.scale(pop, pop);
+    ctx.translate(-tipX, -tipY);
+
+    ctx.fillStyle = '#FFF6EA';
+    ctx.strokeStyle = C.dark;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    roundRect(bx, by, bw, bh, 9);
+    ctx.fill();
+    ctx.stroke();
+    // хвостик к голове
+    const tx = Math.max(bx + 8, Math.min(bx + bw - 14, tipX - 3));
+    ctx.beginPath();
+    ctx.moveTo(tx, by + bh - 1);
+    ctx.lineTo(tipX - 1, tipY);
+    ctx.lineTo(tx + 9, by + bh - 1);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(tx, by + bh);
+    ctx.lineTo(tipX - 1, tipY);
+    ctx.lineTo(tx + 9, by + bh);
+    ctx.stroke();
+
+    ctx.fillStyle = C.dark;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(speech.text, bx + bw / 2, by + bh / 2 + 0.5);
+    ctx.restore();
   }
 
   function rimTop(x, y, w) {
