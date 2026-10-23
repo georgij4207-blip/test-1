@@ -1194,21 +1194,26 @@
 
   function drawEye(x, y, rx, ry, dead) {
     if (dead) {
-      // оглушён: глаза — крутящиеся спиральки
+      // оглушён: глаза слегка закатились — зрачок уехал вверх под веко и чуть покачивается
+      const ex = 3, ey = 3.6;
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(x, y, ex, ey, 0, 0, Math.PI * 2);
       ctx.fillStyle = C.line;
-      ctx.beginPath();
-      ctx.arc(x, y, 3.8, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = C.ink;
-      ctx.lineWidth = 1.1;
-      ctx.lineCap = 'round';
+      ctx.clip();
+      ctx.fillStyle = C.ink;
       ctx.beginPath();
-      const turns = Math.PI * 5, spin = -T * 7;
-      for (let a = 0; a <= turns; a += 0.25) {
-        const r = 3.2 * a / turns;
-        const px = x + Math.cos(a + spin) * r, py = y + Math.sin(a + spin) * r;
-        if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-      }
+      ctx.arc(x + Math.sin(T * 2.5) * 0.9, y - ey * 0.5, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      // приопущенное веко
+      ctx.fillStyle = C.body;
+      ctx.fillRect(x - ex - 1, y - ey - 1, ex * 2 + 2, ey * 0.3 + 1);
+      ctx.restore();
+      ink(1);
+      ctx.beginPath();
+      ctx.moveTo(x - ex * 0.85, y - ey * 0.62);
+      ctx.quadraticCurveTo(x, y - ey * 0.78, x + ex * 0.85, y - ey * 0.62);
       ctx.stroke();
       return;
     }
