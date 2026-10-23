@@ -294,6 +294,7 @@
   const JUMP_V = -760;
   const JUMP_CUT = -320;
   const PLAYER_X = 70;
+  const PS = 1.5;           // масштаб персонажа: рисунок и зона столкновения
 
   // ---------- Рельеф: бесконечные плавные холмы ----------
   // Сглаженный «шум»: случайные высоты в узлах сетки, плавно сшитые между собой.
@@ -826,8 +827,8 @@
 
   function playerBox() {
     const ducking = player.duck && player.onGround;
-    const hw = ducking ? R * 0.95 : R * 0.7;
-    const h = ducking ? 20 : 37;
+    const hw = (ducking ? R * 0.95 : R * 0.7) * PS;
+    const h = ducking ? 26 : 37 * PS;   // пригнувшись — ниже средних летающих помех
     return { l: player.x - hw, r: player.x + hw, t: player.bottom - h, b: player.bottom - 3 };
   }
 
@@ -1031,7 +1032,7 @@
       o.bounced = true;
       o.passed = true;
       dist += BOUNCE_BONUS * 40;
-      popups.push({ x: player.x + 18, y: player.bottom - 46, t: 0.9, text: '+' + BOUNCE_BONUS });
+      popups.push({ x: player.x + 28, y: player.bottom - 68, t: 0.9, text: '+' + BOUNCE_BONUS });
     }
   }
 
@@ -1056,7 +1057,7 @@
     kickRays(5, 12);
     hurtSound();
     say('hit', 3, 1, 0);
-    if (!last) popups.push({ x: player.x + 18, y: player.bottom - 50, t: 0.9, text: '−1 ♥' });
+    if (!last) popups.push({ x: player.x + 28, y: player.bottom - 72, t: 0.9, text: '−1 ♥' });
   }
 
   function updateHit(dt) {
@@ -1098,7 +1099,7 @@
     kickRays(5, 6);
     bangSound();
     say('revive', 3, 1, 0);
-    popups.push({ x: player.x + 14, y: player.bottom - 52, t: 0.8, text: 'БАХ!', size: 26 });
+    popups.push({ x: player.x + 24, y: player.bottom - 76, t: 0.8, text: 'БАХ!', size: 26 });
     puff(player.x, player.bottom, 10);
     const o = h.o;
     o.x = player.x - (o.w || 30) - 40;
@@ -1186,10 +1187,11 @@
 
   function ink(w = 1.6, a = 1) {
     ctx.strokeStyle = a >= 1 ? C.line : 'rgba(255,255,255,' + a + ')';
-    ctx.lineWidth = w;
+    ctx.lineWidth = w / inkScale;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
   }
+  let inkScale = 1;   // при увеличенном рисунке линии остаются прежней толщины
   function paper(fill = C.bg) { ctx.fillStyle = fill; ctx.fill(); }
 
   function write(str, x, y, size, align = 'left', a = 1, base = 'alphabetic') {
@@ -1444,15 +1446,17 @@
     ink(1.2, 0.5 * sh);
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    ctx.ellipse(x, gy + 4, R * 0.85 * sh * sx, 2.6 * sh, Math.atan(slopeAt(x)), 0, Math.PI * 2);
+    ctx.ellipse(x, gy + 4, R * 0.85 * sh * sx * PS, 2.6 * sh * PS, Math.atan(slopeAt(x)), 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // наклон всего тела вокруг ступней
+    // наклон и увеличение всего тела вокруг ступней
     ctx.save();
     ctx.translate(x, player.bottom);
     ctx.rotate(player.tilt);
+    ctx.scale(PS, PS);
     ctx.translate(-x, -player.bottom);
+    inkScale = PS;
 
     // ножки — гибкие, «резиновые», как в старых мультфильмах: изгиб колена плавно меняется
     for (const side of [0, 1]) {
@@ -1541,9 +1545,11 @@
     }
 
     ctx.restore();
+    inkScale = 1;
     ctx.globalAlpha = 1;
 
-    drawSpeech(x, cy - R * sy * (1 + player.spread * 0.2) - 6);
+    const headTop = cy - R * sy * (1 + player.spread * 0.2) - 6;
+    drawSpeech(x, player.bottom - (player.bottom - headTop) * PS);
   }
 
   // Облачко-комикс над головой: выпрыгивает и плавно гаснет
