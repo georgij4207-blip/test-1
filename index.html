@@ -223,7 +223,7 @@
         <li><b>Офисный хлам на земле</b> — стопки бумаг, блоки кода, кружки, мониторы, коробки, клавиатуры, кактусы и конусы — нужно перепрыгнуть.</li>
         <li><b>Летающие помехи</b> — ошибки, жуки-баги, бумажные самолётики и часы-дедлайны — появляются после 180 очков. Через низкие прыгайте, под средними пригибайтесь, под высокими можно просто пробежать.</li>
         <li><b>Батут.</b> Если приземлиться на препятствие сверху, Искорка отскочит и получит <b>+25 очков</b>.</li>
-        <li><b>Три запасные жизни.</b> Удар сбоку или снизу отнимает одну: Искорка мигает и пару секунд неуязвима. Когда запасные жизни кончатся, следующий удар заканчивает игру.</li>
+        <li><b>Три запасные жизни.</b> Удар сбоку или снизу отнимает одну: Искорка отлетает, сидит оглушённая, встряхивается и бежит дальше. Когда запасные жизни кончатся, следующий удар заканчивает игру.</li>
         <li>Очки идут за пройденное расстояние. Скорость постепенно растёт. Рекорд сохраняется в браузере.</li>
       </ul>
       <h3>Управление</h3>
@@ -358,6 +358,9 @@
   let moveSpeed = 0;   // фактическая скорость с учётом склона
   const LIVES = 3;     // запасные жизни
   let lives = LIVES, invuln = 0;
+  // Мультяшная реакция на удар: отлёт назад → оглушение → встряска → «бах!» и дальше
+  const HIT = { knock: 0.3, stun: 1.2, shake: 1.5 };   // границы фаз, секунды от удара
+  let hitSeq = null;   // { t, o, last, kicked }
 
   let mode = 'ready';  // ready | running | paused | over
   let speed, baseSpeed, elapsed, dist, score, hi = loadHi();
@@ -406,9 +409,9 @@
     speed = baseSpeed;
     elapsed = 0; dist = 0; score = 0;
     obstacles = []; particles = [];
-    player.bottom = groundY(PLAYER_X); player.vy = 0; player.onGround = true;
+    player.bottom = groundY(player.x); player.vy = 0; player.onGround = true;
     player.slope = 0; player.tilt = 0;
-    lives = LIVES; invuln = 0;
+    lives = LIVES; invuln = 0; hitSeq = null; player.x = PLAYER_X;
     player.duck = false; player.jumpHeld = false; player.fastFall = false;
     player.squash = 0; player.spread = 0;
     sinceSpawn = 0; nextGap = W * 0.6; flash = 0; shake = 0; newRecord = false;
@@ -457,6 +460,7 @@
   }
 
   function doJump() {
+    if (hitSeq) return;
     player.jumpHeld = true;
     if (player.onGround && !player.duck) {
       player.vy = JUMP_V;
@@ -473,7 +477,7 @@
   }
 
   function setDuck(on) {
-    if (mode !== 'running') { player.duck = false; return; }
+    if (mode !== 'running' || hitSeq) { player.duck = false; return; }
     if (on !== player.duck) kickRays(on ? -2.5 : 2.5, 3);
     player.duck = on;
     player.fastFall = on && !player.onGround;
@@ -670,6 +674,21 @@
     noiseHit(t, 'lowpass', 700, 0.7, 0.14, 0.12);
   }
 
+  // Встряска: быстрое «бр-р-р»
+  function shakeSound() {
+    if (!audio || muted || audio.state !== 'running') return;
+    const t = audio.currentTime;
+    for (let i = 0; i < 5; i++) noiseHit(t + i * 0.055, 'bandpass', 900 + i * 120, 1.2, 0.08, 0.04);
+  }
+
+  // «Бах!»: хлопок и низкий удар
+  function bangSound() {
+    if (!audio || muted || audio.state !== 'running') return;
+    const t = audio.currentTime;
+    noiseHit(t, 'bandpass', 1400, 0.8, 0.28, 0.14);
+    blip(t, 'sine', 200, 60, 0.3, 0.2);
+  }
+
   function landSound() {
     if (!audio || muted || audio.state !== 'running') return;
     const t = audio.currentTime;
@@ -854,12 +873,12 @@
     player.blinkT = Math.max(0, player.blinkT - dt);
 
     // склон под искоркой: на подъёме — наклон вперёд, на спуске — чуть назад
-    player.slope += (slopeAt(PLAYER_X) - player.slope) * Math.min(1, dt * 8);
+    player.slope += (slopeAt(player.x) - player.slope) * Math.min(1, dt * 8);
     const tiltTarget = player.onGround && mode !== 'over' ? clamp(-player.slope * 2.2, -0.18, 0.35) : 0;
     player.tilt += (tiltTarget - player.tilt) * Math.min(1, dt * 8);
 
     if (mode === 'ready') {
-      player.bottom = groundY(PLAYER_X);
+      player.bottom = groundY(player.x);
       player.step += dt * 7;
       updateRays(dt);
       return;
@@ -879,6 +898,15 @@
     speed = Math.min(maxSpeed, baseSpeed + elapsed * 1.27);
     // на подъёме чуть медленнее, на спуске быстрее
     moveSpeed = speed * (player.onGround ? clamp(1 + player.slope * 1.5, 0.78, 1.25) : 1);
+    if (hitSeq) {
+      hitSeq.t += dt;
+      // на отлёте мир замедляется, пока сидит оглушённая — стоит
+      moveSpeed *= hitSeq.t < HIT.knock ? 0.25 : 0;
+      updateHit(dt);
+      if (mode !== 'running') return;
+    } else if (player.x < PLAYER_X) {
+      player.x = Math.min(PLAYER_X, player.x + (PLAYER_X - player.x) * dt * 5 + dt * 10);   // догоняет своё место
+    }
 
     dist += moveSpeed * dt;
     const newScore = Math.floor(dist / 40);
@@ -895,7 +923,7 @@
       const g = player.fastFall ? GRAVITY * 3 : GRAVITY;
       player.vy += g * dt;
       player.bottom += player.vy * dt;
-      const gy = groundY(PLAYER_X);
+      const gy = groundY(player.x);
       if (player.bottom >= gy) {
         player.bottom = gy;
         player.vy = 0;
@@ -907,14 +935,14 @@
         puff(player.x, gy, 7);
       }
     } else {
-      player.bottom = groundY(PLAYER_X);   // бежит по поверхности, повторяя рельеф
+      player.bottom = groundY(player.x);   // бежит по поверхности, повторяя рельеф
     }
     player.squash += (0 - player.squash) * Math.min(1, dt * 10);
     // в прыжке лучики разлетаются, на земле — собираются
     const spreadTarget = player.onGround ? 0 : 1;
     player.spread += (spreadTarget - player.spread) * Math.min(1, dt * (player.onGround ? 14 : 9));
     // шаги: частота растёт со скоростью
-    if (player.onGround) {
+    if (player.onGround && !hitSeq) {
       player.step += dt * Math.min(moveSpeed / 18, 44) * (player.duck ? 1.3 : 1);
       // каждый раз, когда ножка касается земли, — шажок
       const idx = stepIndex();
@@ -922,7 +950,7 @@
     }
 
     // пыль из-под ног
-    if (player.onGround) {
+    if (player.onGround && !hitSeq) {
       dustTimer -= dt;
       if (dustTimer <= 0) { puff(player.x - 8, player.bottom, 1); dustTimer = 0.08; }
     }
@@ -952,9 +980,8 @@
         // падение сверху на препятствие — отскок, как от батута
         const fromAbove = !player.onGround && player.vy > 0 && prevBottom - 3 <= hb.t + 4;
         if (fromAbove) { bounceOff(o, hb); pb = playerBox(); continue; }
-        if (invuln > 0) { o.passed = true; continue; }          // мигает — неуязвима
-        if (lives > 0) { hurt(o); pb = playerBox(); continue; }  // тратим запасную жизнь
-        gameOver(o); break;
+        if (hitSeq || invuln > 0) { o.passed = true; continue; }
+        startHit(o); break;
       }
       if (!o.passed) {
         if (hb.l < pb.r && hb.r > pb.l) {
@@ -1001,33 +1028,77 @@
     bug: 'жука-бага', plane: 'бумажный самолётик', clock: 'часы-дедлайн', mug: 'кружку кофе',
     monitor: 'монитор', boxes: 'коробки', keyboard: 'клавиатуру', cactus: 'кактус', cone: 'конус',
   };
-  // Удар с запасной жизнью: подскок, мигание и пара секунд неуязвимости
-  function hurt(o) {
-    lives--;
-    invuln = 2;
+  function startHit(o) {
+    const last = lives === 0;
+    if (!last) lives--;
+    hitSeq = { t: 0, o, last, nextKick: 0 };
     o.passed = true;
-    shake = 0.7;
-    player.vy = -420;
+    shake = 0.8;
+    player.vy = -330;              // отлетает назад с отскоком
     player.onGround = false;
     player.duck = false;
     player.fastFall = false;
-    player.squash = 0.3;
-    puff(player.x, player.bottom - R, 10);
-    kickRays(4, 10);
+    player.squash = 0.4;
+    player.knockFrom = player.x;
+    puff(player.x + 10, player.bottom - R, 10);
+    kickRays(5, 12);
     hurtSound();
-    say('revive', 3, 1, 0);
-    popups.push({ x: player.x + 18, y: player.bottom - 50, t: 0.9, text: '−1 ♥' });
+    say('hit', 3, 1, 0);
+    if (!last) popups.push({ x: player.x + 18, y: player.bottom - 50, t: 0.9, text: '−1 ♥' });
   }
 
-  function gameOver(o) {
+  function updateHit(dt) {
+    const h = hitSeq, t = h.t;
+    // 1. отлёт назад
+    if (t < HIT.knock) {
+      const k = t / HIT.knock;
+      player.x = player.knockFrom - 28 * (1 - (1 - k) * (1 - k));
+      return;
+    }
+    // 2. сидит оглушённая; на последней жизни после этого — «Игра окончена»
+    if (t < HIT.stun) return;
+    if (h.last) { hitSeq = null; gameOver(h.o, true); return; }
+    // 3. встряхивается, как мокрая собака
+    if (t < HIT.shake) {
+      if (!h.shook) { h.shook = true; shakeSound(); }
+      const k = (t - HIT.stun) / (HIT.shake - HIT.stun);
+      player.tilt = Math.sin(t * 70) * 0.35 * (1 - k * 0.6);
+      h.nextKick -= dt;
+      if (h.nextKick <= 0) { kickRays(2.2, 5 * Math.sign(Math.sin(t * 70)) || 5); h.nextKick = 0.05; }
+      return;
+    }
+    // 4. «бах!» — подскок и бежит дальше, препятствие уже позади
+    hitSeq = null;
+    invuln = 0.4;   // короткая передышка, без мигания
+    player.tilt = 0;
+    player.vy = -430;
+    player.onGround = false;
+    player.squash = -0.3;
+    kickRays(5, 6);
+    bangSound();
+    say('revive', 3, 1, 0);
+    popups.push({ x: player.x + 14, y: player.bottom - 52, t: 0.8, text: 'БАХ!', size: 26 });
+    puff(player.x, player.bottom, 10);
+    const o = h.o;
+    o.x = player.x - (o.w || 30) - 40;
+    // убираем то, что стоит вплотную впереди, чтобы не врезаться сразу снова
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const q = obstacles[i];
+      if (q !== o && q.x > player.x - 30 && q.x < player.x + 170) obstacles.splice(i, 1);
+    }
+  }
+
+  function gameOver(o, quiet) {
     mode = 'over';
     pauseBtn.disabled = true;
     overAt = performance.now();
-    shake = 1;
     player.duck = false;
-    puff(player.x, player.bottom - R, 14);
-    say('hit', 3, 1, 0);
-    kickRays(5, 14);
+    if (!quiet) {
+      shake = 1;
+      puff(player.x, player.bottom - R, 14);
+      say('hit', 3, 1, 0);
+      kickRays(5, 14);
+    }
     if (score > hi) { hi = score; newRecord = true; saveHi(hi); }
     finalScore.textContent = score;
     finalHi.textContent = hi;
@@ -1193,6 +1264,25 @@
   }
 
   function drawEye(x, y, rx, ry, dead) {
+    if (dead === 'spiral') {
+      // оглушена: глаза — крутящиеся спиральки
+      ctx.fillStyle = C.line;
+      ctx.beginPath();
+      ctx.arc(x, y, 3.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = C.ink;
+      ctx.lineWidth = 1.1;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const turns = Math.PI * 5, spin = -T * 7;
+      for (let a = 0; a <= turns; a += 0.25) {
+        const r = 3.2 * a / turns;
+        const px = x + Math.cos(a + spin) * r, py = y + Math.sin(a + spin) * r;
+        if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      return;
+    }
     if (dead) {
       // оглушён: глаза слегка закатились — зрачок уехал вверх под веко и чуть покачивается
       const ex = 3, ey = 3.6;
@@ -1289,15 +1379,16 @@
   }
 
   function drawPlayer() {
-    const blinkOff = invuln > 0 && Math.floor(invuln * 10) % 2 === 0;
-    ctx.globalAlpha = blinkOff ? 0.3 : 1;
     const dead = mode === 'over';
     const airborne = !player.onGround;
     const ducking = player.duck && player.onGround;
-    const moving = (mode === 'running' && !airborne) || mode === 'ready';
+    const stunned = !!hitSeq && hitSeq.t >= HIT.knock && hitSeq.t < HIT.stun;   // сидит оглушённая
+    const shaking = !!hitSeq && hitSeq.t >= HIT.stun;
+    const moving = ((mode === 'running' && !airborne) || mode === 'ready') && !hitSeq;
 
     let sx = 1, sy = 1;
     if (ducking) { sx = 1.3; sy = 0.58; }
+    if (stunned && !airborne) { sx = 1.12; sy = 0.82; }
     sx *= 1 + player.squash * 0.5;
     sy *= 1 - player.squash * 0.5;
 
@@ -1329,8 +1420,8 @@
     for (const side of [0, 1]) {
       const hx = x + (side ? 4.5 : -4.5) * sx;
       let fx, fy;
-      if (dead) {
-        fx = hx + (side ? 4 : -4); fy = player.bottom;
+      if (dead || stunned || shaking) {
+        fx = hx + (side ? 7 : -1); fy = player.bottom;   // ножки вытянуты вперёд — сидит
       } else if (airborne) {
         fx = hx + (side ? 6 : -3); fy = hipY + legLen * 0.7;
       } else {
@@ -1378,10 +1469,12 @@
     if (player.blinkT > 0) ry = 0.6;
     if (ducking) ry *= 0.65;
     if (airborne && player.blinkT <= 0) ry = 3.8;
-    if (dead) drawDizzy(x, cy - R * 1.3, false);   // задняя половина хоровода — за головой
-    drawEye(x - 1, eyeY, 2.5, ry, dead);
-    drawEye(x + 7, eyeY, 2.5, ry, dead);
-    if (dead) drawDizzy(x, cy - R * 1.3, true);    // передняя — поверх
+    const dizzy = dead || stunned;
+    const eyeMode = stunned ? 'spiral' : dead ? 'rolled' : '';
+    if (dizzy) drawDizzy(x, cy - R * 1.3, false);   // задняя половина хоровода — за головой
+    drawEye(x - 1, eyeY, 2.5, ry, eyeMode);
+    drawEye(x + 7, eyeY, 2.5, ry, eyeMode);
+    if (dizzy) drawDizzy(x, cy - R * 1.3, true);    // передняя — поверх
 
     // полоски движения позади в прыжке
     if (airborne && !dead) {
@@ -1978,7 +2071,7 @@
 
     for (const p of popups) {
       ctx.globalAlpha = Math.min(1, p.t / 0.4);
-      ctx.font = '20px ' + FONT;
+      ctx.font = (p.size || 20) + 'px ' + FONT;
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 4;
