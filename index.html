@@ -372,7 +372,7 @@
   const LIVES = 3;     // запасные жизни
   let lives = LIVES, invuln = 0;
   // Мультяшная реакция на удар: отлёт назад → оглушение → встряска → «бах!» и дальше
-  const HIT = { knock: 0.45, stun: 1.45, shake: 3.0 };   // границы фаз, секунды от удара
+  const HIT = { knock: 0.45, stun: 1.45, shake: 3.0, rise: 0.45 };   // rise — сколько встаёт в начале встряски   // границы фаз, секунды от удара
   let hitSeq = null;   // { t, o, last, kicked }
 
   let mode = 'ready';  // ready | running | paused | over
@@ -950,7 +950,6 @@
     } else {
       player.bottom = groundY(player.x);   // бежит по поверхности, повторяя рельеф
     }
-    player.squash += (0 - player.squash) * Math.min(1, dt * 10);
     // в прыжке лучики разлетаются, на земле — собираются
     const spreadTarget = player.onGround ? 0 : 1;
     player.spread += (spreadTarget - player.spread) * Math.min(1, dt * (player.onGround ? 14 : 9));
@@ -1066,6 +1065,7 @@
     if (t < HIT.knock) {
       const k = t / HIT.knock;
       player.x = player.knockFrom - 28 * (1 - (1 - k) * (1 - k));
+      player.tilt = -0.32 * Math.sin(Math.PI * k);   // заваливается назад, ножки вперёд
       return;
     }
     // 2. сидит оглушённая; на последней жизни после этого — «Игра окончена»
@@ -1075,7 +1075,8 @@
     if (t < HIT.shake) {
       h.shakeSnd = (h.shakeSnd ?? 0) - dt;
       if (h.shakeSnd <= 0) { shakeSound(); h.shakeSnd = 0.3; }
-      const k = (t - HIT.stun) / (HIT.shake - HIT.stun);
+      // сначала встаёт (сгибает колени и поднимается), потом трясётся
+      const k = clamp((t - HIT.stun - HIT.rise) / (HIT.shake - HIT.stun - HIT.rise), 0, 1);
       // плавно: амплитуда нарастает и затухает по синусу, частота постепенно снижается
       const env = Math.sin(Math.PI * k);
       h.ph = (h.ph || 0) + dt * (30 - 14 * k);
@@ -1245,6 +1246,10 @@
 
   function updateRays(dt) {
     if (dt <= 0) return;
+    // сжатие тела и ножек — затухающая пружинка: после приземления чуть «пружинит»
+    const sv = player.squashV || 0;
+    player.squashV = sv + (-150 * player.squash - 10 * sv) * dt;
+    player.squash = clamp(player.squash + player.squashV * dt, -0.45, 0.5);
     // ускорение тела без учёта свободного падения: в полёте лучи не провисают, а дёргаются на рывках
     let ay = (player.vy - lastVy) / dt;
     if (lastAir && !player.onGround) ay -= player.fastFall ? GRAVITY * 3 : GRAVITY;
@@ -1406,13 +1411,26 @@
     const shaking = !!hitSeq && hitSeq.t >= HIT.stun;
     const moving = ((mode === 'running' && !airborne) || mode === 'ready') && !hitSeq;
 
+    const knocked = !!hitSeq && hitSeq.t < HIT.knock;   // летит назад
+    const sitting = (stunned && !airborne) || dead;
+    // подъём: 0 — сидит, 1 — стоит; с лёгким упругим перелётом в конце
+    let rise = 1;
+    if (shaking) {
+      const u = clamp((hitSeq.t - HIT.stun) / HIT.rise, 0, 1);
+      const c = 1.9;
+      rise = 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2);   // easeOutBack
+    }
+    const sitAmt = sitting ? 1 : shaking ? 1 - rise : 0;
+
     let sx = 1, sy = 1;
     if (ducking) { sx = 1.3; sy = 0.58; }
-    if (stunned && !airborne) { sx = 1.12; sy = 0.82; }
+    sx += 0.12 * sitAmt; sy -= 0.18 * sitAmt;
     sx *= 1 + player.squash * 0.5;
     sy *= 1 - player.squash * 0.5;
 
-    const legLen = ducking ? 6 : LEG;
+    // длина ножек «резиновая»: сжимаются при приземлении, вытягиваются в прыжке, садятся почти в ноль
+    let legLen = (ducking ? 6 : LEG) * (1 - player.squash * 0.6);
+    legLen = legLen * (1 - sitAmt) + 3 * sitAmt;
     const bob = moving ? Math.abs(Math.sin(player.step)) * 2.2 : 0;
     const hipOff = R * 0.3 * sy;
     const cy = player.bottom - legLen - hipOff - bob;
@@ -1436,23 +1454,41 @@
     ctx.rotate(player.tilt);
     ctx.translate(-x, -player.bottom);
 
-    // ножки
+    // ножки — гибкие, «резиновые», как в старых мультфильмах: изгиб колена плавно меняется
     for (const side of [0, 1]) {
       const hx = x + (side ? 4.5 : -4.5) * sx;
-      let fx, fy;
-      if (dead || stunned || shaking) {
-        fx = hx + (side ? 7 : -1); fy = player.bottom;   // ножки вытянуты вперёд — сидит
+      let fx, fy, bend;   // bend — насколько колено выгнуто вперёд
+      if (knocked && airborne) {
+        // падает: ножки вытянуты вперёд
+        fx = hx + 13 + side * 2; fy = hipY + 2 - side * 3; bend = -2 + Math.sin(T * 30 + side) * 1.5;
+      } else if (sitting) {
+        // сидит: ножки лежат вперёд, чуть провисают
+        fx = hx + 11 + side * 3; fy = player.bottom; bend = -2.5;
+      } else if (shaking && rise < 1.02 && hitSeq.t - HIT.stun < HIT.rise) {
+        // встаёт: ступни подтягиваются под себя, колени сгибаются и распрямляются
+        const u = clamp((hitSeq.t - HIT.stun) / HIT.rise, 0, 1);
+        fx = hx + (11 + side * 3) * (1 - u) + (side ? 2 : -2) * u; fy = player.bottom;
+        bend = 9 * Math.sin(Math.PI * Math.min(1, u * 1.1));
       } else if (airborne) {
-        fx = hx + (side ? 6 : -3); fy = hipY + legLen * 0.7;
+        fx = hx + (side ? 6 : -3); fy = hipY + legLen * 0.75;
+        bend = 6 + player.squash * 8;
       } else {
         const ph = player.step + side * Math.PI;
+        const lift = Math.max(0, Math.cos(ph));
         fx = hx + Math.sin(ph) * legLen * 0.75;
-        fy = player.bottom - Math.max(0, Math.cos(ph)) * 4.5;
+        fy = player.bottom - lift * 4.5;
+        bend = 2.5 + lift * 4 + player.squash * 12;   // поднятая ножка сгибается, на приземлении — пружинят
+        if (shaking) bend += Math.sin(hitSeq.t * 26 + side * 2) * 2.5;
       }
-      ink(2);
+      const mx = (hx + fx) / 2, my = (hipY + fy) / 2;
+      const dx = fx - hx, dy = fy - hipY, dl = Math.hypot(dx, dy) || 1;
+      // колено выгибаем перпендикулярно ноге, вперёд по ходу
+      const nx = dy / dl, ny = -dx / dl;
+      const kx = mx + nx * bend * (nx >= 0 ? 1 : -1), ky = my + ny * bend * (nx >= 0 ? 1 : -1);
+      ink(2.1);
       ctx.beginPath();
       ctx.moveTo(hx, hipY);
-      ctx.quadraticCurveTo((hx + fx) / 2 + 2.5, (hipY + fy) / 2, fx, fy);
+      ctx.quadraticCurveTo(kx, ky, fx, fy);
       ctx.stroke();
       ctx.beginPath();
       ctx.ellipse(fx + 2, fy - 1, 3.6, 2, 0, 0, Math.PI * 2);
