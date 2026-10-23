@@ -3,17 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#F4EEE4">
+<meta name="theme-color" content="#1E0E19">
 <title>Искорка — бегущая звёздочка</title>
 <style>
   :root {
-    --bg: #F4EEE4;
-    --ink: #3D3929;
-    --muted: #8A7F6E;
-    --accent: #D97757;
-    --accent-dark: #C15F3C;
-    --card: #FBF8F2;
-    --line: #DDD1BF;
+    --bg: #1E0E19;
+    --ink: #FFF1E2;
+    --muted: #D9A98C;
+    --accent: #F08A4B;
+    --accent-dark: #C2572B;
+    --card: #2A1624;
+    --line: #5A3449;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -33,7 +34,10 @@
     align-items: center;
     justify-content: center;
     min-height: 100%;
-    padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    background: radial-gradient(120% 80% at 50% 0%, #3A1730 0%, var(--bg) 60%);
+    padding-block: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-bottom));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
     overflow: hidden;
   }
   header {
@@ -66,7 +70,7 @@
     cursor: pointer;
     border-radius: 18px;
     overflow: hidden;
-    box-shadow: 0 1px 0 rgba(61,57,41,0.04), 0 8px 30px rgba(140,110,80,0.10);
+    box-shadow: 0 0 0 1px rgba(255,180,120,0.08), 0 14px 40px rgba(0,0,0,0.45), 0 0 80px rgba(240,120,70,0.12);
   }
   canvas { display: block; width: 100%; height: 100%; }
   .overlay {
@@ -76,47 +80,48 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(244,238,228,0.55);
+    background: rgba(20,8,16,0.35);
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
     transition: opacity .2s ease;
   }
   .overlay.hidden { opacity: 0; pointer-events: none; }
   .panel {
-    background: var(--card);
+    background: rgba(42,22,36,0.94);
     border: 1px solid var(--line);
     border-radius: 16px;
     padding: clamp(14px, 3vw, 24px) clamp(18px, 4vw, 32px);
     text-align: center;
     max-width: min(420px, 90%);
-    box-shadow: 0 10px 30px rgba(140,110,80,0.15);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.5);
   }
   .panel h2 {
     margin: 0 0 6px;
     font-family: ui-serif, Georgia, "Times New Roman", serif;
     font-weight: 500;
     font-size: clamp(20px, 4.5vw, 28px);
+    text-wrap: balance;
   }
   .panel p { margin: 4px 0; color: var(--muted); font-size: clamp(13px, 2.6vw, 15px); line-height: 1.45; }
   .panel .big { color: var(--ink); font-size: clamp(16px, 3.4vw, 20px); font-variant-numeric: tabular-nums; }
-  .panel .record { color: var(--accent-dark); font-weight: 600; }
+  .panel .record { color: var(--accent); font-weight: 600; }
   .btn {
     margin-top: 12px;
     appearance: none;
     border: 0;
     background: var(--accent);
-    color: #fff;
+    color: #2A1020;
     font: inherit;
-    font-weight: 600;
+    font-weight: 700;
     font-size: clamp(14px, 3vw, 16px);
     padding: 10px 22px;
     border-radius: 999px;
     cursor: pointer;
-    box-shadow: 0 2px 0 var(--accent-dark);
+    box-shadow: 0 2px 0 var(--accent-dark), 0 0 24px rgba(240,138,75,0.35);
   }
   .btn:active { transform: translateY(1px); box-shadow: 0 1px 0 var(--accent-dark); }
+  .btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
   .keys { margin-top: 8px; }
-  .btn-row { display: block; }
   kbd {
     display: inline-block;
     min-width: 1.6em;
@@ -124,7 +129,7 @@
     border: 1px solid var(--line);
     border-bottom-width: 2px;
     border-radius: 6px;
-    background: #fff;
+    background: #3A2132;
     color: var(--ink);
     font-family: ui-monospace, Menlo, Consolas, monospace;
     font-size: 0.85em;
@@ -138,16 +143,16 @@
     height: 64px;
     border-radius: 50%;
     border: 1px solid var(--line);
-    background: rgba(251,248,242,0.85);
-    color: var(--accent-dark);
+    background: rgba(42,22,36,0.8);
+    color: var(--accent);
     font-size: 26px;
     display: none;
     align-items: center;
     justify-content: center;
     touch-action: none;
-    box-shadow: 0 4px 14px rgba(140,110,80,0.15);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
   }
-  #duckBtn.active { background: var(--accent); color: #fff; }
+  #duckBtn.active { background: var(--accent); color: #2A1020; }
   .touch #duckBtn { display: flex; }
   .touch .only-keys { display: none; }
   .only-touch { display: none; }
@@ -156,7 +161,7 @@
   @media (orientation: portrait) and (max-width: 600px) {
     .touch .rotate-tip { display: block; margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center; }
   }
-  footer { margin-top: 10px; color: var(--muted); font-size: 12px; text-align: center; }
+  footer { margin-top: 10px; color: var(--muted); font-size: 12px; text-align: center; opacity: 0.8; }
   @media (max-height: 460px) {
     header { margin-bottom: 6px; }
     footer { display: none; }
@@ -216,43 +221,56 @@
 (() => {
   'use strict';
 
-  // ---------- Палитра ----------
+  // ---------- Палитра: закат ----------
   const C = {
-    bg: '#F4EEE4',
-    sun: '#F6E1CF',
-    hillFar: '#EEE4D5',
-    hillNear: '#E8DCC9',
-    cloud: '#FBF7F0',
-    ground: '#CDBFAA',
-    pebble: '#D9CCB8',
-    ink: '#3D3929',
-    muted: '#9A8E7C',
-    spark: '#D97757',
-    sparkDark: '#C15F3C',
-    paper: '#FFFFFF',
-    paperEdge: '#B9A890',
-    paperLine: '#E2D7C6',
-    code: '#EFE6D8',
-    codeEdge: '#B3A086',
-    codeBar: '#DED2BF',
-    codeOrange: '#D97757',
-    codeGreen: '#8E9C78',
-    codeBrown: '#B09A80',
-    codePurple: '#A68FA8',
-    err: '#C9584A',
-    errDark: '#A9473B',
-    warn: '#E0A14A',
-    warnDark: '#C0853A',
+    skyTop: '#2B1238',
+    skyMid1: '#6E1F4A',
+    skyMid2: '#C2413F',
+    skyLow: '#F27A3A',
+    skyHorizon: '#FFC067',
+    sunCore: '#FFF0B8',
+    sunEdge: '#FFB24F',
+    cloudFarTop: '#F7A58A', cloudFarBot: '#B44E68',
+    cloudNearTop: '#FFD8A8', cloudNearBot: '#E2706A',
+    mountain: '#9E3F5A',
+    hillMid: '#64244A',
+    hillNear: '#3B1733',
+    ground: '#22101C',
+    groundRim: '#FF9F55',
+    pebble: '#4A2638',
+    ink: '#FFF3E4',
+    muted: '#FFCFA8',
+    spark: '#E07A4F',
+    sparkShade: '#C25E36',
+    leg: '#C4552C',
+    eyeWhite: '#FFFDF8',
+    pupil: '#2A1220',
+    dark: '#2A1726',
+    darkEdge: '#7C4A60',
+    darkLine: '#5B3549',
+    rim: '#FFA35C',
+    code: '#1A0F1D',
+    codeBar: '#33202F',
+    codeOrange: '#FF9A5C',
+    codeYellow: '#FFD166',
+    codeTeal: '#7FD8C0',
+    codeLilac: '#CDA6F0',
+    err: '#FF5547',
+    errDark: '#8A1C18',
+    warn: '#FFC44D',
+    warnDark: '#8A5A10',
+    dust: '#FFC08A',
   };
 
   // ---------- Константы мира ----------
   const H = 260;            // логическая высота
   const GROUND = 222;       // линия земли
-  const R = 19;             // радиус искорки
+  const R = 20;             // радиус искорки
+  const LEG = 12;           // длина ножек
   const GRAVITY = 2300;
   const JUMP_V = -760;
   const JUMP_CUT = -320;
-  const PLAYER_X = 64;
+  const PLAYER_X = 70;
 
   // ---------- DOM ----------
   const stage = document.getElementById('stage');
@@ -280,6 +298,7 @@
 
   // ---------- Размеры ----------
   let W = 800, scale = 1, dpr = 1;
+  let skyGrad = null;
 
   function resize() {
     const cssW = stage.clientWidth;
@@ -295,17 +314,25 @@
     canvas.height = Math.round(cssH * dpr);
     scale = cssH / H;
     W = cssW / scale;
+
+    skyGrad = ctx.createLinearGradient(0, 0, 0, GROUND);
+    skyGrad.addColorStop(0, C.skyTop);
+    skyGrad.addColorStop(0.35, C.skyMid1);
+    skyGrad.addColorStop(0.62, C.skyMid2);
+    skyGrad.addColorStop(0.85, C.skyLow);
+    skyGrad.addColorStop(1, C.skyHorizon);
   }
 
   // ---------- Состояние ----------
   const player = {
     x: PLAYER_X, bottom: GROUND, vy: 0, onGround: true,
-    duck: false, rot: 0, squash: 0, jumpHeld: false, fastFall: false,
+    duck: false, squash: 0, jumpHeld: false, fastFall: false,
+    step: 0, spread: 0, blink: 2.5, blinkT: 0,
   };
 
   let mode = 'ready';  // ready | running | paused | over
   let speed, baseSpeed, elapsed, dist, score, hi = loadHi();
-  let obstacles = [], particles = [], clouds = [], pebbles = [];
+  let obstacles = [], particles = [], cloudsFar = [], cloudsNear = [], pebbles = [], stars = [];
   let nextGap = 0, sinceSpawn = 0, flash = 0, shake = 0, overAt = 0, scroll = 0;
   let newRecord = false;
 
@@ -317,18 +344,28 @@
     elapsed = 0; dist = 0; score = 0;
     obstacles = []; particles = [];
     player.bottom = GROUND; player.vy = 0; player.onGround = true;
-    player.duck = false; player.jumpHeld = false; player.fastFall = false; player.squash = 0;
+    player.duck = false; player.jumpHeld = false; player.fastFall = false;
+    player.squash = 0; player.spread = 0;
     sinceSpawn = 0; nextGap = W * 0.6; flash = 0; shake = 0; newRecord = false;
   }
 
+  function makeCloud(far, x) {
+    return far
+      ? { x, y: 50 + Math.random() * 50, s: 0.45 + Math.random() * 0.35 }
+      : { x, y: 45 + Math.random() * 60, s: 0.85 + Math.random() * 0.5 };
+  }
+
   function initScenery() {
-    clouds = [];
-    for (let i = 0; i < 4; i++) {
-      clouds.push({ x: Math.random() * 1200, y: 30 + Math.random() * 70, s: 0.7 + Math.random() * 0.6 });
-    }
+    cloudsFar = []; cloudsNear = [];
+    for (let i = 0; i < 6; i++) cloudsFar.push(makeCloud(true, Math.random() * 1300));
+    for (let i = 0; i < 4; i++) cloudsNear.push(makeCloud(false, Math.random() * 1300));
     pebbles = [];
     for (let i = 0; i < 40; i++) {
-      pebbles.push({ x: Math.random() * 1400, y: GROUND + 6 + Math.random() * 28, w: 2 + Math.random() * 6 });
+      pebbles.push({ x: Math.random() * 1400, y: GROUND + 8 + Math.random() * 28, w: 2 + Math.random() * 7 });
+    }
+    stars = [];
+    for (let i = 0; i < 40; i++) {
+      stars.push({ x: Math.random(), y: Math.random() * 70, r: 0.5 + Math.random() * 0.9, p: Math.random() * 6 });
     }
   }
 
@@ -357,7 +394,7 @@
       player.vy = JUMP_V;
       player.onGround = false;
       player.squash = -0.25;
-      puff(player.x - 6, GROUND, 5);
+      puff(player.x - 6, GROUND, 6);
     }
   }
 
@@ -462,7 +499,7 @@
 
     if (canFly && r < 0.28) {
       // летающая ошибка: низко (прыгать), средне (пригнуться), высоко (пробежать)
-      const level = pick([GROUND - 22, GROUND - 52, GROUND - 52, GROUND - 92]);
+      const level = pick([GROUND - 16, GROUND - 42, GROUND - 42, GROUND - 76]);
       obstacles.push({
         type: 'error', kind: Math.random() < 0.6 ? 'err' : 'warn',
         x, y: level, baseY: level, w: 34, h: 26, phase: Math.random() * 6, extra: rand(0.06, 0.16),
@@ -499,8 +536,8 @@
 
   function playerBox() {
     const ducking = player.duck && player.onGround;
-    const hw = ducking ? R * 1.05 : R * 0.68;
-    const h = ducking ? R * 1.05 : R * 1.6;
+    const hw = ducking ? R * 0.95 : R * 0.7;
+    const h = ducking ? 20 : 37;
     return { l: player.x - hw, r: player.x + hw, t: player.bottom - h, b: player.bottom - 3 };
   }
 
@@ -526,13 +563,17 @@
 
     // декорации
     scroll += s * dt;
-    for (const c of clouds) {
-      c.x -= (s * 0.12 + 6) * dt;
-      if (c.x < -140) { c.x = W + rand(40, 300); c.y = 30 + Math.random() * 70; c.s = 0.7 + Math.random() * 0.6; }
+    for (const c of cloudsFar) {
+      c.x -= (s * 0.04 + 4) * dt;
+      if (c.x < -120) Object.assign(c, makeCloud(true, W + rand(20, 300)));
+    }
+    for (const c of cloudsNear) {
+      c.x -= (s * 0.12 + 8) * dt;
+      if (c.x < -160) Object.assign(c, makeCloud(false, W + rand(40, 400)));
     }
     for (const p of pebbles) {
       p.x -= s * dt;
-      if (p.x < -10) { p.x = W + rand(0, 80); p.y = GROUND + 6 + Math.random() * 28; p.w = 2 + Math.random() * 6; }
+      if (p.x < -10) { p.x = W + rand(0, 80); p.y = GROUND + 8 + Math.random() * 28; p.w = 2 + Math.random() * 7; }
     }
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
@@ -540,12 +581,18 @@
       if (p.life <= 0) particles.splice(i, 1);
     }
 
+    // моргание
+    player.blink -= dt;
+    if (player.blink <= 0) { player.blinkT = 0.13; player.blink = rand(2, 4.5); }
+    player.blinkT = Math.max(0, player.blinkT - dt);
+
     if (mode === 'ready') {
-      player.rot += dt * 1.2;
+      player.step += dt * 7;
       return;
     }
     if (mode === 'over') {
       shake = Math.max(0, shake - dt * 3);
+      player.spread += (1.4 - player.spread) * Math.min(1, dt * 8);
       return;
     }
     if (!running) return;
@@ -572,16 +619,20 @@
         player.onGround = true;
         player.fastFall = false;
         player.squash = 0.3;
-        puff(player.x, GROUND, 6);
+        puff(player.x, GROUND, 7);
       }
     }
     player.squash += (0 - player.squash) * Math.min(1, dt * 10);
-    player.rot += dt * (speed / R) * (player.onGround ? 0.55 : 0.3);
+    // в прыжке лучики разлетаются, на земле — собираются
+    const spreadTarget = player.onGround ? 0 : 1;
+    player.spread += (spreadTarget - player.spread) * Math.min(1, dt * (player.onGround ? 14 : 9));
+    // шаги: частота растёт со скоростью
+    if (player.onGround) player.step += dt * (speed / 24) * (player.duck ? 1.3 : 1);
 
     // пыль из-под ног
     if (player.onGround) {
       dustTimer -= dt;
-      if (dustTimer <= 0) { puff(player.x - 10, GROUND, 1); dustTimer = 0.07; }
+      if (dustTimer <= 0) { puff(player.x - 8, GROUND, 1); dustTimer = 0.08; }
     }
 
     // препятствия
@@ -599,7 +650,7 @@
       if (o.type === 'error') {
         o.x -= speed * (1 + o.extra) * dt;
         o.phase += dt * 9;
-        o.y = o.baseY + Math.sin(o.phase * 0.5) * 3;
+        o.y = o.baseY + Math.sin(o.phase * 0.5) * 2;
       } else {
         o.x -= speed * dt;
       }
@@ -635,111 +686,204 @@
     ctx.closePath();
   }
 
-  // Длины лучей — чуть неровные, как у знака Claude
-  const RAYS = [1.0, 0.74, 0.92, 0.68, 0.98, 0.78, 0.88, 0.7, 1.0, 0.76, 0.9, 0.66];
+  // Лучи как у логотипа Claude: неровные углы и длины, сужаются к скруглённому кончику
+  const RAYS = [
+    { a: -90, l: 1.00 }, { a: -58, l: 0.70 }, { a: -28, l: 0.92 }, { a: 4, l: 0.64 },
+    { a: 33, l: 0.96 }, { a: 62, l: 0.74 }, { a: 92, l: 0.86 }, { a: 121, l: 0.66 },
+    { a: 150, l: 0.98 }, { a: 181, l: 0.72 }, { a: 210, l: 0.90 }, { a: 239, l: 0.62 },
+  ].map((r, i) => ({ ...r, a: r.a * Math.PI / 180, i }));
 
-  function drawSpark(x, cy, r, rot, sx, sy, t, dead) {
-    ctx.save();
-    ctx.translate(x, cy);
-    ctx.scale(sx, sy);
-    ctx.rotate(rot);
-    const n = RAYS.length;
-    ctx.lineCap = 'round';
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2;
-      const pulse = dead ? 1 : 1 + Math.sin(t * 18 + i * 1.7) * 0.07;
-      const len = r * RAYS[i] * pulse;
-      ctx.strokeStyle = i % 2 ? C.spark : C.sparkDark;
-      ctx.lineWidth = r * (i % 2 ? 0.2 : 0.24);
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(a) * r * 0.18, Math.sin(a) * r * 0.18);
-      ctx.lineTo(Math.cos(a) * len, Math.sin(a) * len);
-      ctx.stroke();
-    }
-    ctx.fillStyle = C.sparkDark;
+  function drawRay(ang, r0, len, w0, w1, color) {
+    const c = Math.cos(ang), s = Math.sin(ang);
+    const px = -s, py = c;
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(0, 0, r * 0.26, 0, Math.PI * 2);
+    ctx.moveTo(c * r0 + px * w0, s * r0 + py * w0);
+    ctx.lineTo(c * len + px * w1, s * len + py * w1);
+    ctx.arc(c * len, s * len, w1, ang + Math.PI / 2, ang - Math.PI / 2, true);
+    ctx.lineTo(c * r0 - px * w0, s * r0 - py * w0);
+    ctx.closePath();
     ctx.fill();
-    ctx.restore();
+  }
+
+  function drawEye(x, y, rx, ry, dead) {
+    if (dead) {
+      ctx.strokeStyle = C.pupil;
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x - 2, y - 2); ctx.lineTo(x + 2, y + 2);
+      ctx.moveTo(x + 2, y - 2); ctx.lineTo(x - 2, y + 2);
+      ctx.stroke();
+      return;
+    }
+    ctx.fillStyle = C.eyeWhite;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, Math.max(0.5, ry), 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (ry > 1.2) {
+      ctx.fillStyle = C.pupil;
+      ctx.beginPath();
+      ctx.arc(x + rx * 0.35, y + ry * 0.1, Math.min(rx, ry) * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(x + rx * 0.55, y - ry * 0.3, 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   function drawPlayer(t) {
+    const dead = mode === 'over';
     const airborne = !player.onGround;
     const ducking = player.duck && player.onGround;
-    let sx = 1, sy = 1;
-    if (ducking) { sx = 1.35; sy = 0.58; }
-    sx *= 1 + player.squash * 0.6;
-    sy *= 1 - player.squash * 0.6;
+    const moving = (mode === 'running' && !airborne) || mode === 'ready';
 
-    // бег: подпрыгивание
-    const bob = (mode === 'running' && !airborne) ? Math.abs(Math.sin(t * 16)) * 2.2 : 0;
-    const ry = R * sy;
-    const cy = player.bottom - ry - bob;
+    let sx = 1, sy = 1;
+    if (ducking) { sx = 1.3; sy = 0.58; }
+    sx *= 1 + player.squash * 0.5;
+    sy *= 1 - player.squash * 0.5;
+
+    const legLen = ducking ? 6 : LEG;
+    const bob = moving ? Math.abs(Math.sin(player.step)) * 2.2 : 0;
+    const hipOff = R * 0.3 * sy;
+    const cy = player.bottom - legLen - hipOff - bob;
+    const hipY = cy + hipOff;
+    const x = player.x;
 
     // тень
     const hgt = GROUND - player.bottom;
-    const sh = Math.max(0.35, 1 - hgt / 140);
-    ctx.fillStyle = 'rgba(140,110,80,' + (0.18 * sh) + ')';
+    const sh = Math.max(0.3, 1 - hgt / 140);
+    ctx.fillStyle = 'rgba(0,0,0,' + (0.35 * sh) + ')';
     ctx.beginPath();
-    ctx.ellipse(player.x, GROUND + 2, R * 0.9 * sh * sx, 3.2 * sh, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, GROUND + 2, R * 0.85 * sh * sx, 3.2 * sh, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    drawSpark(player.x, cy, R, player.rot, sx, sy, t, mode === 'over');
+    // ножки
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const side of [0, 1]) {
+      const hx = x + (side ? 4.5 : -4.5) * sx;
+      let fx, fy, kx, ky;
+      if (dead) {
+        fx = hx + (side ? 4 : -4); fy = player.bottom;
+      } else if (airborne) {
+        // поджатые ножки
+        fx = hx + (side ? 6 : -3); fy = hipY + legLen * 0.7;
+      } else {
+        const ph = player.step + side * Math.PI;
+        fx = hx + Math.sin(ph) * legLen * 0.75;
+        fy = player.bottom - Math.max(0, Math.cos(ph)) * 4.5;
+      }
+      kx = (hx + fx) / 2 + 2.5;
+      ky = (hipY + fy) / 2;
+      ctx.strokeStyle = C.leg;
+      ctx.lineWidth = 3.8;
+      ctx.beginPath();
+      ctx.moveTo(hx, hipY);
+      ctx.quadraticCurveTo(kx, ky, fx, fy);
+      ctx.stroke();
+      // ступня
+      ctx.fillStyle = C.leg;
+      ctx.beginPath();
+      ctx.ellipse(fx + 2, fy - 0.5, 3.6, 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // тело-звёздочка
+    ctx.save();
+    ctx.translate(x, cy);
+    ctx.scale(sx, sy);
+    const sp = player.spread;
+    const wob = dead ? 0 : Math.sin(player.step * 2) * 0.03;
+    for (const ray of RAYS) {
+      const ang = ray.a + sp * 0.06 * Math.sin(ray.i * 2.1) + wob;
+      // нижние лучи короче, чтобы были видны ножки; в прыжке распрямляются
+      const down = Math.sin(ray.a) > 0.3 ? 0.6 + 0.4 * sp : 1;
+      const len = R * ray.l * down * (1 + sp * 0.22) + (moving ? Math.sin(player.step * 2 + ray.i) * 0.6 : 0);
+      const r0 = R * (0.12 + sp * 0.32);
+      drawRay(ang, r0, len, R * 0.15, R * 0.075, ray.i % 3 === 1 ? C.sparkShade : C.spark);
+    }
+    // ядро
+    ctx.fillStyle = C.spark;
+    ctx.beginPath();
+    ctx.arc(0, 0, R * (0.4 - sp * 0.04), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // глазки (без сплющивания, смотрят вперёд)
+    const eyeY = cy - 1.5 * sy;
+    let ry = 3.3;
+    if (player.blinkT > 0) ry = 0.6;
+    if (ducking) ry *= 0.65;
+    if (airborne && player.blinkT <= 0) ry = 3.8;
+    drawEye(x - 0.5, eyeY, 2.5, ry, dead);
+    drawEye(x + 5.8, eyeY, 2.5, ry, dead);
+  }
+
+  function rimTop(x, y, w) {
+    ctx.strokeStyle = C.rim;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x + 2, y + 0.7);
+    ctx.lineTo(x + w - 2, y + 0.7);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 
   function drawPapers(o) {
     const sheet = 5;
     const n = Math.round(o.h / sheet);
+    ctx.lineWidth = 1;
     for (let i = 0; i < n; i++) {
       const y = o.y + o.h - (i + 1) * sheet;
       const off = Math.sin(o.seed + i * 2.3) * 2.5;
-      ctx.fillStyle = C.paper;
-      ctx.strokeStyle = C.paperEdge;
-      ctx.lineWidth = 1;
+      ctx.fillStyle = C.dark;
+      ctx.strokeStyle = C.darkEdge;
       roundRect(o.x + off, y, o.w, sheet, 1.2);
       ctx.fill();
       ctx.stroke();
     }
     // верхний лист с «текстом»
     const topOff = Math.sin(o.seed + (n - 1) * 2.3) * 2.5;
-    const ty = o.y;
-    ctx.fillStyle = C.paper;
-    ctx.strokeStyle = C.paperEdge;
     ctx.save();
-    ctx.translate(o.x + topOff + o.w / 2, ty - 3);
+    ctx.translate(o.x + topOff + o.w / 2, o.y - 3);
     ctx.rotate(Math.sin(o.seed) * 0.08);
+    ctx.fillStyle = C.dark;
+    ctx.strokeStyle = C.darkEdge;
     roundRect(-o.w / 2 - 1, -4, o.w + 2, 8, 1.5);
     ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = C.paperLine;
-    ctx.lineWidth = 1;
+    rimTop(-o.w / 2 - 1, -4, o.w + 2);
+    ctx.strokeStyle = C.darkLine;
     ctx.beginPath();
-    ctx.moveTo(-o.w / 2 + 4, -1); ctx.lineTo(o.w / 2 - 6, -1);
+    ctx.moveTo(-o.w / 2 + 4, -0.5); ctx.lineTo(o.w / 2 - 6, -0.5);
     ctx.moveTo(-o.w / 2 + 4, 2); ctx.lineTo(o.w / 4, 2);
     ctx.stroke();
     ctx.restore();
     // скрепка
-    ctx.strokeStyle = C.spark;
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = C.rim;
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
-    ctx.moveTo(o.x + o.w - 8 + topOff, o.y - 9);
+    ctx.moveTo(o.x + o.w - 8 + topOff, o.y - 10);
     ctx.lineTo(o.x + o.w - 8 + topOff, o.y + 4);
     ctx.stroke();
   }
 
   function drawCode(o) {
     ctx.fillStyle = C.code;
-    ctx.strokeStyle = C.codeEdge;
+    ctx.strokeStyle = C.darkEdge;
     ctx.lineWidth = 1.2;
     roundRect(o.x, o.y, o.w, o.h, 6);
     ctx.fill(); ctx.stroke();
-    // заголовок окна
     ctx.save();
     roundRect(o.x, o.y, o.w, o.h, 6);
     ctx.clip();
     ctx.fillStyle = C.codeBar;
     ctx.fillRect(o.x, o.y, o.w, 9);
     ctx.restore();
-    const dots = [C.codeOrange, C.warn, C.codeGreen];
+    rimTop(o.x + 3, o.y, o.w - 6);
+    const dots = [C.err, C.warn, C.codeTeal];
     dots.forEach((c, i) => {
       ctx.fillStyle = c;
       ctx.beginPath();
@@ -747,7 +891,7 @@
       ctx.fill();
     });
     // строки кода
-    const colors = [C.codeOrange, C.codeGreen, C.codeBrown, C.codePurple];
+    const colors = [C.codeOrange, C.codeTeal, C.codeYellow, C.codeLilac];
     ctx.lineCap = 'round';
     ctx.lineWidth = 2.4;
     let y = o.y + 16;
@@ -772,11 +916,16 @@
 
   function drawError(o) {
     const flap = Math.sin(o.phase);
-    const main = o.kind === 'err' ? C.err : C.warn;
-    const dark = o.kind === 'err' ? C.errDark : C.warnDark;
+    const isErr = o.kind === 'err';
+    // свечение
+    const g = ctx.createRadialGradient(o.x, o.y, 4, o.x, o.y, 26);
+    g.addColorStop(0, isErr ? 'rgba(255,85,71,0.45)' : 'rgba(255,196,77,0.45)');
+    g.addColorStop(1, 'rgba(255,85,71,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(o.x, o.y, 26, 0, Math.PI * 2); ctx.fill();
     // крылышки
-    ctx.fillStyle = 'rgba(251,247,240,0.95)';
-    ctx.strokeStyle = C.codeEdge;
+    ctx.fillStyle = C.dark;
+    ctx.strokeStyle = C.darkEdge;
     ctx.lineWidth = 1;
     for (const side of [-1, 1]) {
       ctx.save();
@@ -788,22 +937,22 @@
       ctx.restore();
     }
     // значок
-    if (o.kind === 'err') {
-      ctx.fillStyle = main;
+    if (isErr) {
+      ctx.fillStyle = C.err;
       ctx.beginPath();
       ctx.arc(o.x, o.y, 12, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = dark; ctx.lineWidth = 1.2; ctx.stroke();
-      ctx.strokeStyle = '#FFF8F0';
+      ctx.strokeStyle = C.errDark; ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.strokeStyle = '#FFF6EA';
       ctx.lineWidth = 2.8; ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(o.x - 4.5, o.y - 4.5); ctx.lineTo(o.x + 4.5, o.y + 4.5);
       ctx.moveTo(o.x + 4.5, o.y - 4.5); ctx.lineTo(o.x - 4.5, o.y + 4.5);
       ctx.stroke();
     } else {
-      ctx.fillStyle = main;
-      ctx.strokeStyle = dark;
-      ctx.lineWidth = 1.2;
+      ctx.fillStyle = C.warn;
+      ctx.strokeStyle = C.warnDark;
+      ctx.lineWidth = 1.4;
       ctx.lineJoin = 'round';
       ctx.beginPath();
       ctx.moveTo(o.x, o.y - 13);
@@ -811,42 +960,52 @@
       ctx.lineTo(o.x - 13, o.y + 10);
       ctx.closePath();
       ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = '#FFF8F0';
+      ctx.strokeStyle = C.dark;
       ctx.lineWidth = 2.8; ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(o.x, o.y - 5); ctx.lineTo(o.x, o.y + 2);
       ctx.stroke();
-      ctx.fillStyle = '#FFF8F0';
+      ctx.fillStyle = C.dark;
       ctx.beginPath(); ctx.arc(o.x, o.y + 6.2, 1.6, 0, Math.PI * 2); ctx.fill();
     }
   }
 
-  function drawCloud(c) {
+  function drawCloud(c, top, bot, alpha) {
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.scale(c.s, c.s);
-    ctx.fillStyle = C.cloud;
+    ctx.globalAlpha = alpha;
+    const g = ctx.createLinearGradient(0, -24, 0, 12);
+    g.addColorStop(0, top);
+    g.addColorStop(1, bot);
+    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.arc(0, 0, 14, 0, Math.PI * 2);
-    ctx.arc(18, -6, 18, 0, Math.PI * 2);
-    ctx.arc(38, 0, 13, 0, Math.PI * 2);
+    ctx.arc(18, -7, 18, 0, Math.PI * 2);
+    ctx.arc(40, -2, 14, 0, Math.PI * 2);
+    ctx.arc(56, 3, 9, 0, Math.PI * 2);
     ctx.fill();
-    roundRect(-10, 0, 60, 12, 6);
+    roundRect(-12, 0, 78, 12, 6);
     ctx.fill();
     ctx.restore();
   }
 
-  function drawHills(color, amp, base, freq, par) {
+  function drawRidge(color, amp, base, freq, par, pointy) {
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(0, GROUND);
+    ctx.moveTo(-10, GROUND + 1);
     const off = scroll * par;
-    for (let x = 0; x <= W + 10; x += 10) {
+    for (let x = -10; x <= W + 10; x += 6) {
       const wx = x + off;
-      const y = base - (Math.sin(wx * freq) * 0.6 + Math.sin(wx * freq * 2.3 + 1.3) * 0.4 + 1) * amp;
-      ctx.lineTo(x, y);
+      let v;
+      if (pointy) {
+        v = (1 - Math.abs(Math.sin(wx * freq))) * 0.7 + (1 - Math.abs(Math.sin(wx * freq * 2.7 + 1.1))) * 0.3;
+      } else {
+        v = (Math.sin(wx * freq) * 0.6 + Math.sin(wx * freq * 2.3 + 1.3) * 0.4 + 1) / 2;
+      }
+      ctx.lineTo(x, base - v * amp);
     }
-    ctx.lineTo(W + 10, GROUND);
+    ctx.lineTo(W + 10, GROUND + 1);
     ctx.closePath();
     ctx.fill();
   }
@@ -858,30 +1017,59 @@
     if (shake > 0) ctx.translate(Math.sin(t * 90) * shake * 3, Math.cos(t * 70) * shake * 2);
 
     // небо
-    ctx.fillStyle = C.bg;
-    ctx.fillRect(-10, -10, W + 20, H + 20);
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(-10, -10, W + 20, GROUND + 12);
 
-    // солнце
-    ctx.fillStyle = C.sun;
+    // звёзды в верхней части
+    ctx.fillStyle = '#FFE9D6';
+    for (const s of stars) {
+      ctx.globalAlpha = (0.35 + Math.sin(t * 2 + s.p) * 0.25) * (1 - s.y / 80);
+      ctx.beginPath();
+      ctx.arc(s.x * W, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // солнце со свечением
+    const sunX = W * 0.68, sunY = GROUND - 58, sunR = 40;
+    const glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.6, sunX, sunY, sunR * 4.2);
+    glow.addColorStop(0, 'rgba(255,214,140,0.55)');
+    glow.addColorStop(0.4, 'rgba(255,150,80,0.18)');
+    glow.addColorStop(1, 'rgba(255,120,60,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(sunX - sunR * 4.2, sunY - sunR * 4.2, sunR * 8.4, sunR * 8.4);
+    const sunG = ctx.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
+    sunG.addColorStop(0, C.sunCore);
+    sunG.addColorStop(1, C.sunEdge);
+    ctx.fillStyle = sunG;
     ctx.beginPath();
-    ctx.arc(W - 90, 70, 26, 0, Math.PI * 2);
+    ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
     ctx.fill();
+    // полоски заката на солнце
+    ctx.fillStyle = C.skyLow;
+    for (let i = 0; i < 4; i++) {
+      const y = sunY + 8 + i * 8;
+      ctx.fillRect(sunX - sunR, y, sunR * 2, 1.5 + i * 0.9);
+    }
 
-    clouds.forEach(drawCloud);
-    drawHills(C.hillFar, 22, GROUND - 18, 0.006, 0.08);
-    drawHills(C.hillNear, 12, GROUND - 2, 0.011, 0.2);
+    // параллакс: дальние облака, горы, ближние облака, холмы
+    for (const c of cloudsFar) drawCloud(c, C.cloudFarTop, C.cloudFarBot, 0.7);
+    drawRidge(C.mountain, 70, GROUND - 14, 0.0045, 0.04, true);
+    for (const c of cloudsNear) drawCloud(c, C.cloudNearTop, C.cloudNearBot, 0.95);
+    drawRidge(C.hillMid, 34, GROUND - 4, 0.009, 0.14, false);
+    drawRidge(C.hillNear, 16, GROUND + 1, 0.016, 0.32, false);
 
     // земля
-    ctx.fillStyle = C.bg;
+    ctx.fillStyle = C.ground;
     ctx.fillRect(-10, GROUND, W + 20, H - GROUND + 10);
-    ctx.strokeStyle = C.ground;
+    ctx.strokeStyle = C.groundRim;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(-10, GROUND + 0.5);
-    ctx.lineTo(W + 10, GROUND + 0.5);
+    ctx.moveTo(-10, GROUND + 1);
+    ctx.lineTo(W + 10, GROUND + 1);
     ctx.stroke();
     ctx.strokeStyle = C.pebble;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.6;
     ctx.lineCap = 'round';
     ctx.beginPath();
     for (const p of pebbles) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.w, p.y); }
@@ -895,26 +1083,33 @@
     }
 
     // частицы
+    ctx.fillStyle = C.dust;
     for (const p of particles) {
-      ctx.fillStyle = 'rgba(205,180,150,' + Math.max(0, p.life / p.max) * 0.8 + ')';
+      ctx.globalAlpha = Math.max(0, p.life / p.max) * 0.85;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.globalAlpha = 1;
 
     drawPlayer(t);
 
     // счёт
-    const fs = 15;
-    ctx.font = '600 ' + fs + 'px ui-monospace, Menlo, Consolas, monospace';
+    ctx.font = '700 15px ui-monospace, Menlo, Consolas, monospace';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 4;
     const showScore = !(flash > 0 && Math.floor(flash * 8) % 2 === 0);
     ctx.fillStyle = C.ink;
     if (showScore) ctx.fillText(pad(score || 0), W - 16, 14);
     const sw = ctx.measureText('00000').width;
     ctx.fillStyle = C.muted;
+    ctx.globalAlpha = 0.85;
     ctx.fillText('РЕКОРД ' + pad(hi), W - 16 - sw - 16, 14);
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
   }
 
   // ---------- Цикл ----------
