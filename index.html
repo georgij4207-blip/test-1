@@ -142,6 +142,21 @@
   @media (orientation: portrait) and (max-width: 600px) {
     .touch .rotate-tip { display: block; margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center; }
   }
+  .head-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .sound-btn {
+    appearance: none;
+    flex: none;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .sound-btn[aria-pressed="false"] { opacity: 0.6; text-decoration: line-through; }
+  .sound-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   footer { margin-top: 10px; color: var(--muted); font-size: 12px; text-align: center; opacity: 0.8; }
   @media (max-height: 460px) {
     header { margin-bottom: 6px; }
@@ -152,8 +167,11 @@
 <body>
 <header>
   <h1><span>✳</span> Искорка</h1>
-  <div class="hint only-keys">Пробел / ↑ — прыжок · ↓ — пригнуться</div>
-  <div class="hint only-touch">Справа — прыжок · слева — пригнуться</div>
+  <div class="head-right">
+    <div class="hint only-keys">Пробел / ↑ — прыжок · ↓ — пригнуться · M — звук</div>
+    <div class="hint only-touch">Справа — прыжок · слева — пригнуться</div>
+    <button class="sound-btn" id="soundBtn" type="button" aria-pressed="true">Звук вкл</button>
+  </div>
 </header>
 
 <div id="stage">
@@ -381,6 +399,7 @@
   }
 
   function jumpPress() {
+    ensureAudio();
     if (mode === 'ready') { startGame(); doJump(); return; }
     if (mode === 'paused') { resume(); return; }
     if (mode === 'over') {
@@ -423,6 +442,8 @@
   }
 
   window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyM') { ensureAudio(); toggleSound(); return; }
+    ensureAudio();
     if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
       e.preventDefault();
       if (!e.repeat) jumpPress();
@@ -453,6 +474,7 @@
   }
 
   stage.addEventListener('pointerdown', (e) => {
+    ensureAudio();
     if (e.target.closest('button')) return;
     e.preventDefault();
     if (inDuckZone(e)) {
@@ -496,6 +518,87 @@
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 200));
   stage.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // ---------- Звук: мультяшный топоток (Web Audio, без файлов) ----------
+  const MUTE_KEY = 'claude-spark-runner-muted';
+  let muted = false;
+  try { muted = localStorage.getItem(MUTE_KEY) === '1'; } catch (e) { /* нет хранилища */ }
+  let audio = null, master = null, noiseBuf = null;
+  const soundBtn = document.getElementById('soundBtn');
+
+  function renderSoundBtn() {
+    soundBtn.textContent = muted ? 'Звук выкл' : 'Звук вкл';
+    soundBtn.setAttribute('aria-pressed', String(!muted));
+  }
+  function toggleSound() {
+    muted = !muted;
+    try { localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); } catch (e) { /* нет хранилища */ }
+    if (master) master.gain.value = muted ? 0 : 0.6;
+    renderSoundBtn();
+  }
+  soundBtn.addEventListener('click', (e) => { e.stopPropagation(); ensureAudio(); toggleSound(); soundBtn.blur(); });
+  renderSoundBtn();
+
+  // Браузеры разрешают звук только после действия игрока — создаём контекст по первому нажатию
+  function ensureAudio() {
+    if (!audio) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      audio = new AC();
+      master = audio.createGain();
+      master.gain.value = muted ? 0 : 0.6;
+      master.connect(audio.destination);
+      noiseBuf = audio.createBuffer(1, Math.floor(audio.sampleRate * 0.1), audio.sampleRate);
+      const d = noiseBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    if (audio.state === 'suspended') audio.resume();
+  }
+
+  function noiseHit(t, type, freq, q, vol, len) {
+    const src = audio.createBufferSource();
+    src.buffer = noiseBuf;
+    const f = audio.createBiquadFilter();
+    f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = audio.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    src.connect(f); f.connect(g); g.connect(master);
+    src.start(t); src.stop(t + len + 0.02);
+  }
+
+  function blip(t, type, f0, f1, vol, len) {
+    const o = audio.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + len * 0.8);
+    const g = audio.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + len + 0.02);
+  }
+
+  // Шажок: короткий «тук» с понижением тона + щелчок; ножки звучат чуть по-разному
+  function stepSound(foot) {
+    if (!audio || muted || audio.state !== 'running') return;
+    const t = audio.currentTime;
+    const base = (foot ? 560 : 470) * rand(0.94, 1.06);
+    blip(t, 'triangle', base, base * 0.42, 0.22, 0.06);
+    noiseHit(t, 'bandpass', 2400, 1.3, 0.1, 0.035);
+  }
+
+  // Приземление: мягкий «бум»
+  function landSound() {
+    if (!audio || muted || audio.state !== 'running') return;
+    const t = audio.currentTime;
+    blip(t, 'sine', 260, 85, 0.32, 0.14);
+    noiseHit(t, 'lowpass', 900, 0.7, 0.16, 0.09);
+  }
+
+  let stepIdx = 0;
+  const stepIndex = () => Math.floor((player.step + Math.PI / 2) / Math.PI);
 
   // ---------- Препятствия ----------
   const rand = (a, b) => a + Math.random() * (b - a);
@@ -632,6 +735,8 @@
         player.onGround = true;
         player.fastFall = false;
         player.squash = 0.3;
+        landSound();
+        stepIdx = stepIndex();
         puff(player.x, GROUND, 7);
       }
     }
@@ -640,7 +745,12 @@
     const spreadTarget = player.onGround ? 0 : 1;
     player.spread += (spreadTarget - player.spread) * Math.min(1, dt * (player.onGround ? 14 : 9));
     // шаги: частота растёт со скоростью
-    if (player.onGround) player.step += dt * (speed / 24) * (player.duck ? 1.3 : 1);
+    if (player.onGround) {
+      player.step += dt * Math.min(speed / 18, 44) * (player.duck ? 1.3 : 1);
+      // каждый раз, когда ножка касается земли, — шажок
+      const idx = stepIndex();
+      if (idx !== stepIdx) { stepIdx = idx; stepSound(idx & 1); }
+    }
 
     // пыль из-под ног
     if (player.onGround) {
