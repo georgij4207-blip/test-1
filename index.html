@@ -350,21 +350,29 @@
 
   // ---------- Реплики ----------
   const LINES = {
-    jump: ['Оп!', 'Хоп!'],
-    close: ['Фух!', 'Чуть не!'],
-    hit: ['Ой!', 'Ах!'],
-    milestone: ['Еду дальше!'],
-    bounce: ['Опа!'],
+    jump: ['Оп!', 'Хоп!', 'Вжух!', 'Опля!', 'Йо-хо!', 'Лечу!', 'Изи!', 'Взлёт!', 'Хе-хей!', 'По плану!'],
+    close: ['Фух!', 'Чуть не!', 'Пронесло!', 'На волоске!', 'Еле-еле!', 'Ого!', 'Уф!', 'Мимо!'],
+    hit: ['Ой!', 'Ах!', 'Ауч!', 'Бдыщ!', 'Упс…', 'Не по плану!', 'Ну во-о-от…', 'Ай!', 'Это баг!', 'Ctrl+Z!'],
+    run: ['Бегу-бегу!', 'Ля-ля-ля', 'Где тут финиш?', 'Всё по плану!', 'Тук-тук-тук', 'Кофе бы…',
+          'Деплой не ждёт!', 'Я быстрый!', 'Ничего не сломаю!', 'Ещё чуть-чуть!', 'Красота!', 'Вперёд!'],
+    milestone: ['Еду дальше!', 'Разгоняюсь!', 'Не остановить!', 'Ещё пятьсот!'],
+    bounce: ['Опа!', 'Батут!', 'Боинь!', 'Пружинка!', 'Уи-и-и!'],
   };
+  const lastLine = {};
   const speech = { text: '', t: 0, dur: 0, prio: 0 };
   let lastSpoke = -10;
+  let runTalk = 8;   // через сколько секунд бега сказать что-нибудь просто так
 
   function say(kind, prio, chance, cooldown) {
     if (Math.random() > chance) return;
     const now = performance.now() / 1000;
     const busy = speech.t > 0 && speech.prio >= prio;
     if (busy || now - lastSpoke < cooldown) return;
-    speech.text = pick(LINES[kind]);
+    // не повторяем подряд одну и ту же фразу
+    let text = pick(LINES[kind]);
+    while (LINES[kind].length > 1 && text === lastLine[kind]) text = pick(LINES[kind]);
+    lastLine[kind] = text;
+    speech.text = text;
     speech.dur = speech.t = 1.15;
     speech.prio = prio;
     lastSpoke = now;
@@ -381,7 +389,8 @@
     player.duck = false; player.jumpHeld = false; player.fastFall = false;
     player.squash = 0; player.spread = 0;
     sinceSpawn = 0; nextGap = W * 0.6; flash = 0; shake = 0; newRecord = false;
-    speech.t = 0; lastSpoke = -10;
+    speech.t = 0; lastSpoke = -10; runTalk = rand(6, 10);
+    lastVy = 0; lastAir = false;
     popups = [];
     noteNo = 0;
   }
@@ -430,6 +439,7 @@
       player.onGround = false;
       player.squash = -0.25;
       puff(player.x - 6, GROUND, 6);
+      say('jump', 0, 0.12, 3);
     }
   }
 
@@ -440,6 +450,7 @@
 
   function setDuck(on) {
     if (mode !== 'running') { player.duck = false; return; }
+    if (on !== player.duck) kickRays(on ? -2.5 : 2.5, 3);
     player.duck = on;
     player.fastFall = on && !player.onGround;
   }
@@ -793,11 +804,13 @@
 
     if (mode === 'ready') {
       player.step += dt * 7;
+      updateRays(dt);
       return;
     }
     if (mode === 'over') {
       shake = Math.max(0, shake - dt * 3);
       player.spread += (1.4 - player.spread) * Math.min(1, dt * 8);
+      updateRays(dt);
       return;
     }
     if (!running) return;
@@ -841,7 +854,7 @@
       player.step += dt * Math.min(speed / 18, 44) * (player.duck ? 1.3 : 1);
       // каждый раз, когда ножка касается земли, — шажок
       const idx = stepIndex();
-      if (idx !== stepIdx) { stepIdx = idx; stepSound(idx & 1); }
+      if (idx !== stepIdx) { stepIdx = idx; stepSound(idx & 1); kickRays(0.9, 0.6); }
     }
 
     // пыль из-под ног
@@ -890,6 +903,14 @@
         }
       }
     }
+
+    // иногда болтает на бегу
+    if (mode === 'running' && player.onGround) {
+      runTalk -= dt;
+      if (runTalk <= 0) { say('run', 0, 0.85, 2.5); runTalk = rand(8, 14); }
+    }
+
+    updateRays(dt);
   }
 
   function bounceOff(o, hb) {
@@ -921,6 +942,7 @@
     player.duck = false;
     puff(player.x, player.bottom - R, 14);
     say('hit', 3, 1, 0);
+    kickRays(5, 14);
     if (score > hi) { hi = score; newRecord = true; saveHi(hi); }
     finalScore.textContent = score;
     finalHi.textContent = hi;
@@ -1032,14 +1054,56 @@
     { a: 150, l: 0.98 }, { a: 181, l: 0.72 }, { a: 210, l: 0.90 }, { a: 239, l: 0.62 },
   ].map((r, i) => ({ ...r, a: r.a * Math.PI / 180, i }));
 
-  function rayPath(ang, r0, len, w0, w1) {
+  // Упругие лучи: у каждого своя «пружинка» на изгиб (a) и растяжение (s).
+  // Кончики отстают от движения тела по инерции и потом пружинят обратно.
+  const raySprings = RAYS.map(() => ({ a: 0, va: 0, s: 0, vs: 0 }));
+  let lastVy = 0, lastAir = false;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  function kickRays(stretch, twist = 0) {
+    raySprings.forEach((r, i) => {
+      r.vs += stretch * (0.6 + 0.8 * Math.abs(Math.sin(i * 1.7)));
+      r.va += twist * Math.sin(i * 2.3 + 1);
+    });
+  }
+
+  function updateRays(dt) {
+    if (dt <= 0) return;
+    // ускорение тела без учёта свободного падения: в полёте лучи не провисают, а дёргаются на рывках
+    let ay = (player.vy - lastVy) / dt;
+    if (lastAir && !player.onGround) ay -= player.fastFall ? GRAVITY * 3 : GRAVITY;
+    ay = clamp(ay, -20000, 20000);
+    lastVy = player.vy;
+    lastAir = !player.onGround;
+    for (const ray of RAYS) {
+      const r = raySprings[ray.i];
+      const c = Math.cos(ray.a), s = Math.sin(ray.a);
+      r.va += (-190 * r.a - 5.5 * r.va - ay * c * 0.03) * dt;
+      r.vs += (-230 * r.s - 7 * r.vs - ay * s * 0.016) * dt;
+      r.a = clamp(r.a + r.va * dt, -0.75, 0.75);
+      r.s = clamp(r.s + r.vs * dt, -0.35, 0.5);
+    }
+  }
+
+  // Луч с изгибом: основание смотрит по ang, кончик отклонён на bend
+  function rayPath(ang, r0, len, w0, w1, bend = 0) {
     const c = Math.cos(ang), s = Math.sin(ang);
-    const px = -s, py = c;
+    const p0x = c * r0, p0y = s * r0;
+    const ca = ang + bend * 0.35, cm = len * 0.55;
+    const p1x = Math.cos(ca) * cm, p1y = Math.sin(ca) * cm;
+    const ta = ang + bend;
+    const p2x = Math.cos(ta) * len, p2y = Math.sin(ta) * len;
+    const dx = p2x - p1x, dy = p2y - p1y, dl = Math.hypot(dx, dy) || 1;
+    const n0x = -s, n0y = c;
+    const n1x = -Math.sin(ca), n1y = Math.cos(ca);
+    const n2x = -dy / dl, n2y = dx / dl;
+    const wm = (w0 + w1) / 2;
+    const tip = Math.atan2(dy, dx);
     ctx.beginPath();
-    ctx.moveTo(c * r0 + px * w0, s * r0 + py * w0);
-    ctx.lineTo(c * len + px * w1, s * len + py * w1);
-    ctx.arc(c * len, s * len, w1, ang + Math.PI / 2, ang - Math.PI / 2, true);
-    ctx.lineTo(c * r0 - px * w0, s * r0 - py * w0);
+    ctx.moveTo(p0x + n0x * w0, p0y + n0y * w0);
+    ctx.quadraticCurveTo(p1x + n1x * wm, p1y + n1y * wm, p2x + n2x * w1, p2y + n2y * w1);
+    ctx.arc(p2x, p2y, w1, tip + Math.PI / 2, tip - Math.PI / 2, true);
+    ctx.quadraticCurveTo(p1x - n1x * wm, p1y - n1y * wm, p0x - n0x * w0, p0y - n0y * w0);
     ctx.closePath();
   }
 
@@ -1124,11 +1188,12 @@
     const sway = dead ? 0 : Math.sin(player.step * 2) * 0.03;
     ink(1.5);
     for (const ray of RAYS) {
-      const ang = ray.a + sp * 0.06 * Math.sin(ray.i * 2.1) + sway;
+      const spring = raySprings[ray.i];
+      const ang = ray.a + sp * 0.06 * Math.sin(ray.i * 2.1) + sway + spring.a * 0.25;
       // нижние лучи короче, чтобы были видны ножки; в прыжке распрямляются
       const down = Math.sin(ray.a) > 0.3 ? 0.6 + 0.4 * sp : 1;
       const len = R * ray.l * down * (1 + sp * 0.22) + (moving ? Math.sin(player.step * 2 + ray.i) * 0.6 : 0);
-      rayPath(ang, R * (0.12 + sp * 0.32), len, R * 0.15, R * 0.075);
+      rayPath(ang, R * (0.12 + sp * 0.32), len * (1 + spring.s), R * 0.15, R * 0.075 * (1 - spring.s * 0.4), spring.a);
       paper(C.body);
       ctx.stroke();
     }
