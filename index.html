@@ -411,6 +411,7 @@
     while (LINES[kind].length > 1 && text === lastLine[kind]) text = pick(LINES[kind]);
     lastLine[kind] = text;
     speech.text = text;
+    popSfx();
     speech.dur = speech.t = 1.15;
     speech.prio = prio;
     lastSpoke = now;
@@ -457,6 +458,7 @@
     reset();
     mode = 'running';
     pauseBtn.disabled = false;
+    startSfx();
     startScreen.classList.add('hidden');
     overScreen.classList.add('hidden');
     pauseScreen.classList.add('hidden');
@@ -482,6 +484,7 @@
       player.squash = -0.25;
       puff(player.x - 6, player.bottom, 6);
       say('jump', 0, 0.12, 3);
+      jumpSfx();
     }
   }
 
@@ -492,7 +495,10 @@
 
   function setDuck(on) {
     if (mode !== 'running' || hitSeq) { player.duck = false; return; }
-    if (on !== player.duck) kickRays(on ? -2.5 : 2.5, 3);
+    if (on !== player.duck) {
+      kickRays(on ? -2.5 : 2.5, 3);
+      if (on) (player.onGround ? squishSfx : diveSfx)();
+    }
     player.duck = on;
     player.fastFall = on && !player.onGround;
   }
@@ -679,15 +685,6 @@
     noiseHit(t, 'lowpass', 500, 0.5, 0.035, 0.05);
   }
 
-  // Приземление: мягкий «бум»
-  // Удар: короткий «бом» с понижением тона
-  function hurtSound() {
-    if (!audio || muted || audio.state !== 'running') return;
-    const t = audio.currentTime;
-    blip(t, 'triangle', 420, 110, 0.22, 0.28);
-    noiseHit(t, 'lowpass', 700, 0.7, 0.14, 0.12);
-  }
-
   // Встряска: быстрое «бр-р-р»
   function shakeSound() {
     if (!audio || muted || audio.state !== 'running') return;
@@ -703,6 +700,7 @@
     blip(t, 'sine', 200, 60, 0.3, 0.2);
   }
 
+  // Приземление: мягкий «бум»
   function landSound() {
     if (!audio || muted || audio.state !== 'running') return;
     const t = audio.currentTime;
@@ -733,6 +731,124 @@
     o.start(t); lfo.start(t);
     o.stop(t + 0.45); lfo.stop(t + 0.45);
   }
+
+  // ---------- Мультяшные звуки в духе старых мультфильмов (всё синтезируется на лету) ----------
+  const sfxOk = () => audio && !muted && audio.state === 'running';
+
+  // скольжение тона — «свисток-слайд»
+  function slide(t, type, f0, f1, dur, vol, vib = 0) {
+    const o = audio.createOscillator();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    if (vib) {
+      const l = audio.createOscillator(), d = audio.createGain();
+      l.frequency.value = 7; d.gain.value = vib;
+      l.connect(d); d.connect(o.frequency);
+      l.start(t); l.stop(t + dur + 0.05);
+    }
+    const g = audio.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.015);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+
+  // шумовой «вжух» с плавающим фильтром
+  function whoosh(t, f0, f1, dur, vol) {
+    const src = audio.createBufferSource();
+    src.buffer = noiseBuf;
+    src.loop = true;
+    const f = audio.createBiquadFilter();
+    f.type = 'bandpass'; f.Q.value = 1.5;
+    f.frequency.setValueAtTime(f0, t);
+    f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    const g = audio.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.3);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(master);
+    src.start(t); src.stop(t + dur + 0.05);
+  }
+
+  // прыжок — свисток вверх
+  function jumpSfx() { if (sfxOk()) slide(audio.currentTime, 'sine', 420, 1100, 0.18, 0.07); }
+  // резкое падение (вниз в воздухе) — свисток вниз
+  function diveSfx() { if (sfxOk()) slide(audio.currentTime, 'sine', 1300, 300, 0.22, 0.07); }
+  // присел — мягкий «чвяк»
+  function squishSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    slide(t, 'triangle', 320, 140, 0.09, 0.09);
+    noiseHit(t, 'lowpass', 600, 0.6, 0.05, 0.06);
+  }
+  // удар — деревянный «БОНК» и свисток падения
+  function bonkSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    slide(t, 'square', 950, 130, 0.12, 0.08);
+    blip(t, 'sine', 600, 90, 0.3, 0.2);
+    noiseHit(t, 'bandpass', 2200, 2, 0.18, 0.05);
+    slide(t + 0.12, 'sine', 1500, 400, 0.3, 0.05);
+  }
+  // птички над головой — щебет
+  function tweetSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    for (let i = 0; i < 3; i++) slide(t + i * 0.07, 'sine', 2600 + Math.random() * 600, 3600 + Math.random() * 500, 0.05, 0.035);
+  }
+  // встаёт — быстрый «зип» вверх
+  function zipSfx() { if (sfxOk()) { const t = audio.currentTime; slide(t, 'triangle', 300, 1400, 0.16, 0.06); } }
+  // рывок с места после «бах!» — «ж-ж-жух» и убегает
+  function zoomSfx() { if (sfxOk()) whoosh(audio.currentTime + 0.05, 500, 3500, 0.35, 0.14); }
+  // проскочил впритык — короткий «фьють»
+  function closeSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    whoosh(t, 2500, 700, 0.2, 0.08);
+    slide(t + 0.02, 'sine', 1600, 900, 0.12, 0.04);
+  }
+  // каждые 500 очков — маленькие фанфары «та-да!»
+  function fanfareSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    blip(t, 'triangle', 660, 650, 0.12, 0.14);
+    blip(t + 0.13, 'triangle', 990, 980, 0.14, 0.32);
+  }
+  // проигрыш — грустный тромбон «уа-уа-уа-уааа»
+  function sadTromboneSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    const notes = [392, 370, 349, 330];
+    notes.forEach((f, i) => {
+      const last = i === notes.length - 1;
+      const o = audio.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f, t + i * 0.42);
+      if (last) {
+        const l = audio.createOscillator(), d = audio.createGain();
+        l.frequency.value = 6; d.gain.value = 9;
+        l.connect(d); d.connect(o.frequency);
+        l.start(t + i * 0.42); l.stop(t + i * 0.42 + 1.1);
+      }
+      const lp = audio.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = 900;
+      const g = audio.createGain();
+      const st = t + i * 0.42, len = last ? 1.0 : 0.36;
+      g.gain.setValueAtTime(0.0001, st);
+      g.gain.exponentialRampToValueAtTime(0.09, st + 0.04);
+      g.gain.setValueAtTime(0.09, st + len * 0.7);
+      g.gain.exponentialRampToValueAtTime(0.0001, st + len);
+      o.connect(lp); lp.connect(g); g.connect(master);
+      o.start(st); o.stop(st + len + 0.05);
+    });
+  }
+  // реплика в облачке — тихий «пип»
+  function popSfx() { if (sfxOk()) blip(audio.currentTime, 'sine', 900, 1300, 0.04, 0.05); }
+  // старт забега — «вжик»
+  function startSfx() { if (sfxOk()) { const t = audio.currentTime; slide(t, 'sine', 500, 1500, 0.15, 0.06); whoosh(t + 0.08, 800, 3000, 0.25, 0.08); } }
 
   let stepIdx = 0;
   const stepIndex = () => Math.floor((player.step + Math.PI / 2) / Math.PI);
@@ -925,7 +1041,7 @@
     dist += moveSpeed * dt;
     const newScore = Math.floor(dist / 40);
     if (Math.floor(newScore / 100) > Math.floor(score / 100)) flash = 1.2;
-    if (Math.floor(newScore / 500) > Math.floor(score / 500)) say('milestone', 2, 1, 0);
+    if (Math.floor(newScore / 500) > Math.floor(score / 500)) { say('milestone', 2, 1, 0); fanfareSfx(); }
     score = newScore;
     flash = Math.max(0, flash - dt);
     invuln = Math.max(0, invuln - dt);
@@ -1004,7 +1120,7 @@
           if (!player.onGround) o.jumped = true;
         } else if (hb.r <= pb.l) {
           o.passed = true;
-          if (o.minGap < 10) say('close', 1, 0.7, 1.2);
+          if (o.minGap < 10) { say('close', 1, 0.7, 1.2); closeSfx(); }
           else if (o.jumped) say('jump', 0, 0.3, 3);
         }
       }
@@ -1055,7 +1171,7 @@
     player.knockFrom = player.x;
     puff(player.x + 10, player.bottom - R, 10);
     kickRays(5, 12);
-    hurtSound();
+    bonkSfx();
     say('hit', 3, 1, 0);
     if (!last) popups.push({ x: player.x + 28, y: player.bottom - 72, t: 0.9, text: '−1 ♥' });
   }
@@ -1070,12 +1186,19 @@
       return;
     }
     // 2. сидит оглушённая; на последней жизни после этого — «Игра окончена»
-    if (t < HIT.stun) return;
+    if (t < HIT.stun) {
+      h.tweet = (h.tweet ?? 0.1) - dt;
+      if (h.tweet <= 0) { tweetSfx(); h.tweet = 0.4; }   // птички щебечут
+      return;
+    }
     if (h.last) { hitSeq = null; gameOver(h.o, true); return; }
     // 3. встряхивается, как мокрая собака
     if (t < HIT.shake) {
-      h.shakeSnd = (h.shakeSnd ?? 0) - dt;
-      if (h.shakeSnd <= 0) { shakeSound(); h.shakeSnd = 0.3; }
+      if (!h.zipped) { h.zipped = true; zipSfx(); }      // встаёт
+      if (t > HIT.stun + HIT.rise) {
+        h.shakeSnd = (h.shakeSnd ?? 0) - dt;
+        if (h.shakeSnd <= 0) { shakeSound(); h.shakeSnd = 0.3; }
+      }
       // сначала встаёт (сгибает колени и поднимается), потом трясётся
       const k = clamp((t - HIT.stun - HIT.rise) / (HIT.shake - HIT.stun - HIT.rise), 0, 1);
       // плавно: амплитуда нарастает и затухает по синусу, частота постепенно снижается
@@ -1098,6 +1221,7 @@
     player.squash = -0.3;
     kickRays(5, 6);
     bangSound();
+    zoomSfx();
     say('revive', 3, 1, 0);
     popups.push({ x: player.x + 24, y: player.bottom - 76, t: 0.8, text: 'БАХ!', size: 26 });
     puff(player.x, player.bottom, 10);
@@ -1128,6 +1252,7 @@
       ? '<span class="record">Новый рекорд! ✳</span>'
       : 'Рекорд: <b>' + hi + '</b>';
     document.getElementById('planHit').textContent = 'Врезаться в ' + (o && (HIT_NAMES[o.kind] || HIT_NAMES[o.type]) || 'препятствие') + '.';
+    setTimeout(sadTromboneSfx, 250);
     setTimeout(() => { if (mode === 'over') overScreen.classList.remove('hidden'); }, 350);
   }
 
