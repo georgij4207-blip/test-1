@@ -1,0 +1,937 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#F4EEE4">
+<title>Искорка — бегущая звёздочка</title>
+<style>
+  :root {
+    --bg: #F4EEE4;
+    --ink: #3D3929;
+    --muted: #8A7F6E;
+    --accent: #D97757;
+    --accent-dark: #C15F3C;
+    --card: #FBF8F2;
+    --line: #DDD1BF;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    overscroll-behavior: none;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    overflow: hidden;
+  }
+  header {
+    width: 100%;
+    max-width: 1000px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  h1 {
+    margin: 0;
+    font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-weight: 500;
+    font-size: clamp(20px, 4vw, 28px);
+    letter-spacing: -0.01em;
+  }
+  h1 span { color: var(--accent); }
+  .hint {
+    color: var(--muted);
+    font-size: clamp(12px, 2.2vw, 14px);
+    text-align: right;
+  }
+  #stage {
+    position: relative;
+    width: 100%;
+    max-width: 1000px;
+    touch-action: none;
+    cursor: pointer;
+    border-radius: 18px;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(61,57,41,0.04), 0 8px 30px rgba(140,110,80,0.10);
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(244,238,228,0.55);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    transition: opacity .2s ease;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: clamp(14px, 3vw, 24px) clamp(18px, 4vw, 32px);
+    text-align: center;
+    max-width: min(420px, 90%);
+    box-shadow: 0 10px 30px rgba(140,110,80,0.15);
+  }
+  .panel h2 {
+    margin: 0 0 6px;
+    font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-weight: 500;
+    font-size: clamp(20px, 4.5vw, 28px);
+  }
+  .panel p { margin: 4px 0; color: var(--muted); font-size: clamp(13px, 2.6vw, 15px); line-height: 1.45; }
+  .panel .big { color: var(--ink); font-size: clamp(16px, 3.4vw, 20px); font-variant-numeric: tabular-nums; }
+  .panel .record { color: var(--accent-dark); font-weight: 600; }
+  .btn {
+    margin-top: 12px;
+    appearance: none;
+    border: 0;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    font-size: clamp(14px, 3vw, 16px);
+    padding: 10px 22px;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 2px 0 var(--accent-dark);
+  }
+  .btn:active { transform: translateY(1px); box-shadow: 0 1px 0 var(--accent-dark); }
+  .keys { margin-top: 8px; }
+  .btn-row { display: block; }
+  kbd {
+    display: inline-block;
+    min-width: 1.6em;
+    padding: 1px 6px;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    background: #fff;
+    color: var(--ink);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    text-align: center;
+  }
+  #duckBtn {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: rgba(251,248,242,0.85);
+    color: var(--accent-dark);
+    font-size: 26px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+    box-shadow: 0 4px 14px rgba(140,110,80,0.15);
+  }
+  #duckBtn.active { background: var(--accent); color: #fff; }
+  .touch #duckBtn { display: flex; }
+  .touch .only-keys { display: none; }
+  .only-touch { display: none; }
+  .touch .only-touch { display: block; }
+  .rotate-tip { display: none; }
+  @media (orientation: portrait) and (max-width: 600px) {
+    .touch .rotate-tip { display: block; margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center; }
+  }
+  footer { margin-top: 10px; color: var(--muted); font-size: 12px; text-align: center; }
+  @media (max-height: 460px) {
+    header { margin-bottom: 6px; }
+    footer { display: none; }
+    #duckBtn { width: 52px; height: 52px; font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>✳</span> Искорка</h1>
+  <div class="hint only-keys">Пробел / ↑ — прыжок · ↓ — пригнуться</div>
+  <div class="hint only-touch">Тап — прыжок · ▼ — пригнуться</div>
+</header>
+
+<div id="stage">
+  <canvas id="game" aria-label="Игровое поле"></canvas>
+
+  <div class="overlay" id="startScreen">
+    <div class="panel">
+      <h2>Искорка бежит</h2>
+      <p>Перепрыгивайте стопки бумаг и блоки кода, уворачивайтесь от летающих ошибок.</p>
+      <div class="keys only-keys">
+        <p><kbd>Пробел</kbd> или <kbd>↑</kbd> — прыжок</p>
+        <p><kbd>↓</kbd> — пригнуться</p>
+      </div>
+      <div class="only-touch">
+        <p>Тап по экрану — прыжок<br>Кнопка ▼ или свайп вниз — пригнуться</p>
+      </div>
+      <button class="btn" id="startBtn" type="button">Начать</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="overScreen">
+    <div class="panel">
+      <h2>Игра окончена</h2>
+      <p class="big">Счёт: <b id="finalScore">0</b></p>
+      <p id="recordLine">Рекорд: <b id="finalHi">0</b></p>
+      <button class="btn" id="restartBtn" type="button">Ещё раз</button>
+      <p class="only-keys" style="margin-top:10px">или нажмите <kbd>Пробел</kbd></p>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="pauseScreen">
+    <div class="panel">
+      <h2>Пауза</h2>
+      <p>Нажмите пробел или коснитесь экрана, чтобы продолжить.</p>
+    </div>
+  </div>
+
+  <button id="duckBtn" type="button" aria-label="Пригнуться">▼</button>
+</div>
+
+<div class="rotate-tip">Совет: поверните телефон горизонтально — обзор будет шире.</div>
+<footer>Рекорд сохраняется в этом браузере.</footer>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Палитра ----------
+  const C = {
+    bg: '#F4EEE4',
+    sun: '#F6E1CF',
+    hillFar: '#EEE4D5',
+    hillNear: '#E8DCC9',
+    cloud: '#FBF7F0',
+    ground: '#CDBFAA',
+    pebble: '#D9CCB8',
+    ink: '#3D3929',
+    muted: '#9A8E7C',
+    spark: '#D97757',
+    sparkDark: '#C15F3C',
+    paper: '#FFFFFF',
+    paperEdge: '#B9A890',
+    paperLine: '#E2D7C6',
+    code: '#EFE6D8',
+    codeEdge: '#B3A086',
+    codeBar: '#DED2BF',
+    codeOrange: '#D97757',
+    codeGreen: '#8E9C78',
+    codeBrown: '#B09A80',
+    codePurple: '#A68FA8',
+    err: '#C9584A',
+    errDark: '#A9473B',
+    warn: '#E0A14A',
+    warnDark: '#C0853A',
+  };
+
+  // ---------- Константы мира ----------
+  const H = 260;            // логическая высота
+  const GROUND = 222;       // линия земли
+  const R = 19;             // радиус искорки
+  const GRAVITY = 2300;
+  const JUMP_V = -760;
+  const JUMP_CUT = -320;
+  const PLAYER_X = 64;
+
+  // ---------- DOM ----------
+  const stage = document.getElementById('stage');
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const startScreen = document.getElementById('startScreen');
+  const overScreen = document.getElementById('overScreen');
+  const pauseScreen = document.getElementById('pauseScreen');
+  const finalScore = document.getElementById('finalScore');
+  const finalHi = document.getElementById('finalHi');
+  const recordLine = document.getElementById('recordLine');
+  const duckBtn = document.getElementById('duckBtn');
+
+  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  if (isTouch) document.body.classList.add('touch');
+
+  // ---------- Рекорд ----------
+  const HI_KEY = 'claude-spark-runner-hi';
+  function loadHi() {
+    try { return parseInt(localStorage.getItem(HI_KEY), 10) || 0; } catch (e) { return 0; }
+  }
+  function saveHi(v) {
+    try { localStorage.setItem(HI_KEY, String(v)); } catch (e) { /* хранилище недоступно */ }
+  }
+
+  // ---------- Размеры ----------
+  let W = 800, scale = 1, dpr = 1;
+
+  function resize() {
+    const cssW = stage.clientWidth;
+    const header = document.querySelector('header');
+    const footer = document.querySelector('footer');
+    const reserved = header.offsetHeight + (footer.offsetParent ? footer.offsetHeight + 10 : 0) + 40;
+    const maxH = Math.max(160, window.innerHeight - reserved);
+    let cssH = Math.min(cssW * 0.42, 380, maxH);
+    cssH = Math.max(cssH, Math.min(190, maxH));
+    stage.style.height = cssH + 'px';
+    dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    scale = cssH / H;
+    W = cssW / scale;
+  }
+
+  // ---------- Состояние ----------
+  const player = {
+    x: PLAYER_X, bottom: GROUND, vy: 0, onGround: true,
+    duck: false, rot: 0, squash: 0, jumpHeld: false, fastFall: false,
+  };
+
+  let mode = 'ready';  // ready | running | paused | over
+  let speed, baseSpeed, elapsed, dist, score, hi = loadHi();
+  let obstacles = [], particles = [], clouds = [], pebbles = [];
+  let nextGap = 0, sinceSpawn = 0, flash = 0, shake = 0, overAt = 0, scroll = 0;
+  let newRecord = false;
+
+  function speedFactor() { return Math.max(0.78, Math.min(1, W / 800)); }
+
+  function reset() {
+    baseSpeed = 380 * speedFactor();
+    speed = baseSpeed;
+    elapsed = 0; dist = 0; score = 0;
+    obstacles = []; particles = [];
+    player.bottom = GROUND; player.vy = 0; player.onGround = true;
+    player.duck = false; player.jumpHeld = false; player.fastFall = false; player.squash = 0;
+    sinceSpawn = 0; nextGap = W * 0.6; flash = 0; shake = 0; newRecord = false;
+  }
+
+  function initScenery() {
+    clouds = [];
+    for (let i = 0; i < 4; i++) {
+      clouds.push({ x: Math.random() * 1200, y: 30 + Math.random() * 70, s: 0.7 + Math.random() * 0.6 });
+    }
+    pebbles = [];
+    for (let i = 0; i < 40; i++) {
+      pebbles.push({ x: Math.random() * 1400, y: GROUND + 6 + Math.random() * 28, w: 2 + Math.random() * 6 });
+    }
+  }
+
+  // ---------- Управление ----------
+  function startGame() {
+    reset();
+    mode = 'running';
+    startScreen.classList.add('hidden');
+    overScreen.classList.add('hidden');
+    pauseScreen.classList.add('hidden');
+  }
+
+  function jumpPress() {
+    if (mode === 'ready') { startGame(); doJump(); return; }
+    if (mode === 'paused') { resume(); return; }
+    if (mode === 'over') {
+      if (performance.now() - overAt > 450) startGame();
+      return;
+    }
+    doJump();
+  }
+
+  function doJump() {
+    player.jumpHeld = true;
+    if (player.onGround && !player.duck) {
+      player.vy = JUMP_V;
+      player.onGround = false;
+      player.squash = -0.25;
+      puff(player.x - 6, GROUND, 5);
+    }
+  }
+
+  function jumpRelease() {
+    player.jumpHeld = false;
+    if (!player.onGround && player.vy < JUMP_CUT) player.vy = JUMP_CUT;
+  }
+
+  function setDuck(on) {
+    if (mode !== 'running') { player.duck = false; return; }
+    player.duck = on;
+    player.fastFall = on && !player.onGround;
+    duckBtn.classList.toggle('active', on);
+  }
+
+  function pause() {
+    if (mode !== 'running') return;
+    mode = 'paused';
+    pauseScreen.classList.remove('hidden');
+  }
+  function resume() {
+    mode = 'running';
+    pauseScreen.classList.add('hidden');
+    last = performance.now();
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+      e.preventDefault();
+      if (!e.repeat) jumpPress();
+    } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+      e.preventDefault();
+      setDuck(true);
+    } else if ((e.code === 'Escape' || e.code === 'KeyP') && mode === 'running') {
+      pause();
+    } else if (e.code === 'Enter' && mode !== 'running') {
+      e.preventDefault();
+      jumpPress();
+    }
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') jumpRelease();
+    else if (e.code === 'ArrowDown' || e.code === 'KeyS') setDuck(false);
+  });
+
+  // Тап / клик по полю — прыжок; свайп вниз — пригнуться
+  let touchStartY = null, swipeDuck = false, activePointer = null;
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;
+    e.preventDefault();
+    activePointer = e.pointerId;
+    touchStartY = e.clientY;
+    swipeDuck = false;
+    jumpPress();
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== activePointer || touchStartY === null) return;
+    if (!swipeDuck && e.clientY - touchStartY > 30 && mode === 'running') {
+      swipeDuck = true;
+      jumpRelease();
+      setDuck(true);
+    }
+  });
+  const endPointer = (e) => {
+    if (e.pointerId !== activePointer) return;
+    activePointer = null;
+    touchStartY = null;
+    jumpRelease();
+    if (swipeDuck) { swipeDuck = false; setDuck(false); }
+  };
+  stage.addEventListener('pointerup', endPointer);
+  stage.addEventListener('pointercancel', endPointer);
+
+  // Кнопка «пригнуться» для сенсорных экранов
+  duckBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    duckBtn.setPointerCapture(e.pointerId);
+    if (mode === 'ready' || mode === 'paused') { jumpPress(); return; }
+    setDuck(true);
+  });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) =>
+    duckBtn.addEventListener(ev, (e) => { e.stopPropagation(); setDuck(false); }));
+  duckBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  document.getElementById('startBtn').addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
+  document.getElementById('restartBtn').addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
+
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+  window.addEventListener('blur', pause);
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+  stage.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // ---------- Препятствия ----------
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = (arr) => arr[(Math.random() * arr.length) | 0];
+
+  function spawn() {
+    const x = W + 30;
+    const canFly = score > 180;
+    const r = Math.random();
+
+    if (canFly && r < 0.28) {
+      // летающая ошибка: низко (прыгать), средне (пригнуться), высоко (пробежать)
+      const level = pick([GROUND - 22, GROUND - 52, GROUND - 52, GROUND - 92]);
+      obstacles.push({
+        type: 'error', kind: Math.random() < 0.6 ? 'err' : 'warn',
+        x, y: level, baseY: level, w: 34, h: 26, phase: Math.random() * 6, extra: rand(0.06, 0.16),
+      });
+      return 34;
+    }
+
+    if (r < 0.62) {
+      // стопки бумаг (1–3 рядом)
+      const maxCount = speed > baseSpeed * 1.35 ? 3 : speed > baseSpeed * 1.15 ? 2 : 1;
+      const count = 1 + ((Math.random() * maxCount) | 0);
+      let cx = x;
+      for (let i = 0; i < count; i++) {
+        const h = Math.round(rand(26, 50) / 5) * 5;
+        const w = rand(32, 38);
+        obstacles.push({ type: 'papers', x: cx, y: GROUND - h, w, h, seed: Math.random() * 1000 });
+        cx += w + rand(2, 6);
+      }
+      return cx - x;
+    }
+
+    // блок кода
+    const wide = speed > baseSpeed * 1.2 && Math.random() < 0.4;
+    const w = wide ? rand(62, 78) : rand(42, 54);
+    const h = rand(38, 56);
+    obstacles.push({ type: 'code', x, y: GROUND - h, w, h, seed: Math.random() * 1000 });
+    return w;
+  }
+
+  function hitbox(o) {
+    if (o.type === 'error') return { l: o.x - 11, r: o.x + 11, t: o.y - 11, b: o.y + 11 };
+    return { l: o.x + 3, r: o.x + o.w - 3, t: o.y + 3, b: o.y + o.h };
+  }
+
+  function playerBox() {
+    const ducking = player.duck && player.onGround;
+    const hw = ducking ? R * 1.05 : R * 0.68;
+    const h = ducking ? R * 1.05 : R * 1.6;
+    return { l: player.x - hw, r: player.x + hw, t: player.bottom - h, b: player.bottom - 3 };
+  }
+
+  const overlap = (a, b) => a.l < b.r && a.r > b.l && a.t < b.b && a.b > b.t;
+
+  // ---------- Частицы ----------
+  function puff(x, y, n) {
+    for (let i = 0; i < n; i++) {
+      particles.push({
+        x: x + rand(-4, 4), y: y - rand(0, 4),
+        vx: rand(-120, -20), vy: rand(-80, -10),
+        life: rand(0.3, 0.55), max: 0.55, r: rand(1.5, 3.2),
+      });
+    }
+  }
+
+  // ---------- Обновление ----------
+  let dustTimer = 0;
+
+  function update(dt) {
+    const running = mode === 'running';
+    const s = running ? speed : (mode === 'ready' ? 60 : 0);
+
+    // декорации
+    scroll += s * dt;
+    for (const c of clouds) {
+      c.x -= (s * 0.12 + 6) * dt;
+      if (c.x < -140) { c.x = W + rand(40, 300); c.y = 30 + Math.random() * 70; c.s = 0.7 + Math.random() * 0.6; }
+    }
+    for (const p of pebbles) {
+      p.x -= s * dt;
+      if (p.x < -10) { p.x = W + rand(0, 80); p.y = GROUND + 6 + Math.random() * 28; p.w = 2 + Math.random() * 6; }
+    }
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 200 * dt;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    if (mode === 'ready') {
+      player.rot += dt * 1.2;
+      return;
+    }
+    if (mode === 'over') {
+      shake = Math.max(0, shake - dt * 3);
+      return;
+    }
+    if (!running) return;
+
+    // скорость растёт со временем
+    elapsed += dt;
+    const maxSpeed = 980 * speedFactor();
+    speed = Math.min(maxSpeed, baseSpeed + elapsed * 9.5);
+
+    dist += speed * dt;
+    const newScore = Math.floor(dist / 40);
+    if (Math.floor(newScore / 100) > Math.floor(score / 100)) flash = 1.2;
+    score = newScore;
+    flash = Math.max(0, flash - dt);
+
+    // физика искорки
+    if (!player.onGround) {
+      const g = player.fastFall ? GRAVITY * 3 : GRAVITY;
+      player.vy += g * dt;
+      player.bottom += player.vy * dt;
+      if (player.bottom >= GROUND) {
+        player.bottom = GROUND;
+        player.vy = 0;
+        player.onGround = true;
+        player.fastFall = false;
+        player.squash = 0.3;
+        puff(player.x, GROUND, 6);
+      }
+    }
+    player.squash += (0 - player.squash) * Math.min(1, dt * 10);
+    player.rot += dt * (speed / R) * (player.onGround ? 0.55 : 0.3);
+
+    // пыль из-под ног
+    if (player.onGround) {
+      dustTimer -= dt;
+      if (dustTimer <= 0) { puff(player.x - 10, GROUND, 1); dustTimer = 0.07; }
+    }
+
+    // препятствия
+    sinceSpawn += speed * dt;
+    if (sinceSpawn >= nextGap) {
+      const width = spawn();
+      sinceSpawn = 0;
+      const minGap = speed * 0.72 + width + 70;
+      nextGap = minGap + Math.random() * speed * 0.7;
+    }
+
+    const pb = playerBox();
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const o = obstacles[i];
+      if (o.type === 'error') {
+        o.x -= speed * (1 + o.extra) * dt;
+        o.phase += dt * 9;
+        o.y = o.baseY + Math.sin(o.phase * 0.5) * 3;
+      } else {
+        o.x -= speed * dt;
+      }
+      if (o.x + (o.w || 30) < -40) { obstacles.splice(i, 1); continue; }
+      if (overlap(pb, hitbox(o))) { gameOver(); break; }
+    }
+  }
+
+  function gameOver() {
+    mode = 'over';
+    overAt = performance.now();
+    shake = 1;
+    player.duck = false;
+    duckBtn.classList.remove('active');
+    puff(player.x, player.bottom - R, 14);
+    if (score > hi) { hi = score; newRecord = true; saveHi(hi); }
+    finalScore.textContent = score;
+    finalHi.textContent = hi;
+    recordLine.innerHTML = newRecord
+      ? '<span class="record">Новый рекорд! ✳</span>'
+      : 'Рекорд: <b>' + hi + '</b>';
+    setTimeout(() => { if (mode === 'over') overScreen.classList.remove('hidden'); }, 350);
+  }
+
+  // ---------- Отрисовка ----------
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // Длины лучей — чуть неровные, как у знака Claude
+  const RAYS = [1.0, 0.74, 0.92, 0.68, 0.98, 0.78, 0.88, 0.7, 1.0, 0.76, 0.9, 0.66];
+
+  function drawSpark(x, cy, r, rot, sx, sy, t, dead) {
+    ctx.save();
+    ctx.translate(x, cy);
+    ctx.scale(sx, sy);
+    ctx.rotate(rot);
+    const n = RAYS.length;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const pulse = dead ? 1 : 1 + Math.sin(t * 18 + i * 1.7) * 0.07;
+      const len = r * RAYS[i] * pulse;
+      ctx.strokeStyle = i % 2 ? C.spark : C.sparkDark;
+      ctx.lineWidth = r * (i % 2 ? 0.2 : 0.24);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.18, Math.sin(a) * r * 0.18);
+      ctx.lineTo(Math.cos(a) * len, Math.sin(a) * len);
+      ctx.stroke();
+    }
+    ctx.fillStyle = C.sparkDark;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.26, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPlayer(t) {
+    const airborne = !player.onGround;
+    const ducking = player.duck && player.onGround;
+    let sx = 1, sy = 1;
+    if (ducking) { sx = 1.35; sy = 0.58; }
+    sx *= 1 + player.squash * 0.6;
+    sy *= 1 - player.squash * 0.6;
+
+    // бег: подпрыгивание
+    const bob = (mode === 'running' && !airborne) ? Math.abs(Math.sin(t * 16)) * 2.2 : 0;
+    const ry = R * sy;
+    const cy = player.bottom - ry - bob;
+
+    // тень
+    const hgt = GROUND - player.bottom;
+    const sh = Math.max(0.35, 1 - hgt / 140);
+    ctx.fillStyle = 'rgba(140,110,80,' + (0.18 * sh) + ')';
+    ctx.beginPath();
+    ctx.ellipse(player.x, GROUND + 2, R * 0.9 * sh * sx, 3.2 * sh, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    drawSpark(player.x, cy, R, player.rot, sx, sy, t, mode === 'over');
+  }
+
+  function drawPapers(o) {
+    const sheet = 5;
+    const n = Math.round(o.h / sheet);
+    for (let i = 0; i < n; i++) {
+      const y = o.y + o.h - (i + 1) * sheet;
+      const off = Math.sin(o.seed + i * 2.3) * 2.5;
+      ctx.fillStyle = C.paper;
+      ctx.strokeStyle = C.paperEdge;
+      ctx.lineWidth = 1;
+      roundRect(o.x + off, y, o.w, sheet, 1.2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // верхний лист с «текстом»
+    const topOff = Math.sin(o.seed + (n - 1) * 2.3) * 2.5;
+    const ty = o.y;
+    ctx.fillStyle = C.paper;
+    ctx.strokeStyle = C.paperEdge;
+    ctx.save();
+    ctx.translate(o.x + topOff + o.w / 2, ty - 3);
+    ctx.rotate(Math.sin(o.seed) * 0.08);
+    roundRect(-o.w / 2 - 1, -4, o.w + 2, 8, 1.5);
+    ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = C.paperLine;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-o.w / 2 + 4, -1); ctx.lineTo(o.w / 2 - 6, -1);
+    ctx.moveTo(-o.w / 2 + 4, 2); ctx.lineTo(o.w / 4, 2);
+    ctx.stroke();
+    ctx.restore();
+    // скрепка
+    ctx.strokeStyle = C.spark;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(o.x + o.w - 8 + topOff, o.y - 9);
+    ctx.lineTo(o.x + o.w - 8 + topOff, o.y + 4);
+    ctx.stroke();
+  }
+
+  function drawCode(o) {
+    ctx.fillStyle = C.code;
+    ctx.strokeStyle = C.codeEdge;
+    ctx.lineWidth = 1.2;
+    roundRect(o.x, o.y, o.w, o.h, 6);
+    ctx.fill(); ctx.stroke();
+    // заголовок окна
+    ctx.save();
+    roundRect(o.x, o.y, o.w, o.h, 6);
+    ctx.clip();
+    ctx.fillStyle = C.codeBar;
+    ctx.fillRect(o.x, o.y, o.w, 9);
+    ctx.restore();
+    const dots = [C.codeOrange, C.warn, C.codeGreen];
+    dots.forEach((c, i) => {
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.arc(o.x + 6 + i * 6, o.y + 4.5, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    // строки кода
+    const colors = [C.codeOrange, C.codeGreen, C.codeBrown, C.codePurple];
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 2.4;
+    let y = o.y + 16;
+    let k = 0;
+    while (y < o.y + o.h - 5) {
+      const indent = (Math.floor(Math.abs(Math.sin(o.seed + k * 1.9)) * 3)) * 5;
+      let x = o.x + 6 + indent;
+      const parts = 1 + (Math.floor(Math.abs(Math.cos(o.seed * 0.7 + k)) * 3));
+      for (let p = 0; p < parts && x < o.x + o.w - 8; p++) {
+        const len = 5 + Math.abs(Math.sin(o.seed + k * 3.1 + p * 2.7)) * 12;
+        const end = Math.min(x + len, o.x + o.w - 6);
+        ctx.strokeStyle = colors[(k + p + Math.floor(o.seed)) % colors.length];
+        ctx.beginPath();
+        ctx.moveTo(x, y); ctx.lineTo(end, y);
+        ctx.stroke();
+        x = end + 4;
+      }
+      y += 6.5;
+      k++;
+    }
+  }
+
+  function drawError(o) {
+    const flap = Math.sin(o.phase);
+    const main = o.kind === 'err' ? C.err : C.warn;
+    const dark = o.kind === 'err' ? C.errDark : C.warnDark;
+    // крылышки
+    ctx.fillStyle = 'rgba(251,247,240,0.95)';
+    ctx.strokeStyle = C.codeEdge;
+    ctx.lineWidth = 1;
+    for (const side of [-1, 1]) {
+      ctx.save();
+      ctx.translate(o.x + side * 9, o.y - 2);
+      ctx.rotate(side * (0.5 + flap * 0.55));
+      ctx.beginPath();
+      ctx.ellipse(side * 8, -2, 9, 4.5, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+    // значок
+    if (o.kind === 'err') {
+      ctx.fillStyle = main;
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = dark; ctx.lineWidth = 1.2; ctx.stroke();
+      ctx.strokeStyle = '#FFF8F0';
+      ctx.lineWidth = 2.8; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(o.x - 4.5, o.y - 4.5); ctx.lineTo(o.x + 4.5, o.y + 4.5);
+      ctx.moveTo(o.x + 4.5, o.y - 4.5); ctx.lineTo(o.x - 4.5, o.y + 4.5);
+      ctx.stroke();
+    } else {
+      ctx.fillStyle = main;
+      ctx.strokeStyle = dark;
+      ctx.lineWidth = 1.2;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y - 13);
+      ctx.lineTo(o.x + 13, o.y + 10);
+      ctx.lineTo(o.x - 13, o.y + 10);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = '#FFF8F0';
+      ctx.lineWidth = 2.8; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(o.x, o.y - 5); ctx.lineTo(o.x, o.y + 2);
+      ctx.stroke();
+      ctx.fillStyle = '#FFF8F0';
+      ctx.beginPath(); ctx.arc(o.x, o.y + 6.2, 1.6, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawCloud(c) {
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.scale(c.s, c.s);
+    ctx.fillStyle = C.cloud;
+    ctx.beginPath();
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.arc(18, -6, 18, 0, Math.PI * 2);
+    ctx.arc(38, 0, 13, 0, Math.PI * 2);
+    ctx.fill();
+    roundRect(-10, 0, 60, 12, 6);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawHills(color, amp, base, freq, par) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(0, GROUND);
+    const off = scroll * par;
+    for (let x = 0; x <= W + 10; x += 10) {
+      const wx = x + off;
+      const y = base - (Math.sin(wx * freq) * 0.6 + Math.sin(wx * freq * 2.3 + 1.3) * 0.4 + 1) * amp;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(W + 10, GROUND);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function pad(n) { return String(n).padStart(5, '0'); }
+
+  function draw(t) {
+    ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+    if (shake > 0) ctx.translate(Math.sin(t * 90) * shake * 3, Math.cos(t * 70) * shake * 2);
+
+    // небо
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+
+    // солнце
+    ctx.fillStyle = C.sun;
+    ctx.beginPath();
+    ctx.arc(W - 90, 70, 26, 0, Math.PI * 2);
+    ctx.fill();
+
+    clouds.forEach(drawCloud);
+    drawHills(C.hillFar, 22, GROUND - 18, 0.006, 0.08);
+    drawHills(C.hillNear, 12, GROUND - 2, 0.011, 0.2);
+
+    // земля
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(-10, GROUND, W + 20, H - GROUND + 10);
+    ctx.strokeStyle = C.ground;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-10, GROUND + 0.5);
+    ctx.lineTo(W + 10, GROUND + 0.5);
+    ctx.stroke();
+    ctx.strokeStyle = C.pebble;
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (const p of pebbles) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.w, p.y); }
+    ctx.stroke();
+
+    // препятствия
+    for (const o of obstacles) {
+      if (o.type === 'papers') drawPapers(o);
+      else if (o.type === 'code') drawCode(o);
+      else drawError(o);
+    }
+
+    // частицы
+    for (const p of particles) {
+      ctx.fillStyle = 'rgba(205,180,150,' + Math.max(0, p.life / p.max) * 0.8 + ')';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    drawPlayer(t);
+
+    // счёт
+    const fs = 15;
+    ctx.font = '600 ' + fs + 'px ui-monospace, Menlo, Consolas, monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    const showScore = !(flash > 0 && Math.floor(flash * 8) % 2 === 0);
+    ctx.fillStyle = C.ink;
+    if (showScore) ctx.fillText(pad(score || 0), W - 16, 14);
+    const sw = ctx.measureText('00000').width;
+    ctx.fillStyle = C.muted;
+    ctx.fillText('РЕКОРД ' + pad(hi), W - 16 - sw - 16, 14);
+  }
+
+  // ---------- Цикл ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    update(dt);
+    draw(now / 1000);
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  initScenery();
+  reset();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
