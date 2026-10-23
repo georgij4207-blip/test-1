@@ -1194,10 +1194,21 @@
 
   function drawEye(x, y, rx, ry, dead) {
     if (dead) {
-      ink(1.5);
+      // оглушён: глаза — крутящиеся спиральки
+      ctx.fillStyle = C.line;
       ctx.beginPath();
-      ctx.moveTo(x - 2.2, y - 2.2); ctx.lineTo(x + 2.2, y + 2.2);
-      ctx.moveTo(x + 2.2, y - 2.2); ctx.lineTo(x - 2.2, y + 2.2);
+      ctx.arc(x, y, 3.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = C.ink;
+      ctx.lineWidth = 1.1;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      const turns = Math.PI * 5, spin = -T * 7;
+      for (let a = 0; a <= turns; a += 0.25) {
+        const r = 3.2 * a / turns;
+        const px = x + Math.cos(a + spin) * r, py = y + Math.sin(a + spin) * r;
+        if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
       ctx.stroke();
       return;
     }
@@ -1211,6 +1222,65 @@
       ctx.arc(x + rx * 0.35, y + ry * 0.1, Math.min(rx, ry) * 0.6, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  // Хоровод над головой оглушённого: птички и звёздочки летают по эллипсу
+  function drawBirdie(x, y, k, flip) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(k * flip, k);
+    ink(1.2);
+    ctx.beginPath(); ctx.arc(0, 0, 3.6, 0, Math.PI * 2); paper(); ctx.stroke();      // тельце
+    ctx.beginPath(); ctx.arc(-3.6, -2.4, 2.3, 0, Math.PI * 2); paper(); ctx.stroke(); // голова
+    ctx.beginPath();                                                                 // клюв
+    ctx.moveTo(-5.6, -2.8); ctx.lineTo(-8, -2); ctx.lineTo(-5.6, -1.4);
+    ctx.stroke();
+    ctx.fillStyle = C.line;
+    ctx.beginPath(); ctx.arc(-4.1, -2.9, 0.6, 0, Math.PI * 2); ctx.fill();          // глазик
+    const wing = Math.sin(T * 18) * 3;                                               // крылышко машет
+    ctx.beginPath(); ctx.moveTo(-1, -1); ctx.quadraticCurveTo(1.5, -5 - wing, 4, -2.5 - wing); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(3.4, 0.5); ctx.lineTo(6.5, -1); ctx.moveTo(3.4, 1); ctx.lineTo(6.5, 1.5); ctx.stroke(); // хвостик
+    ctx.restore();
+  }
+
+  function drawStarlet(x, y, k, rot) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    ctx.scale(k, k);
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 ? 2.2 : 5;
+      const a = -Math.PI / 2 + i * Math.PI / 5;
+      if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ink(1.2);
+    paper();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawDizzy(cx, cy, front) {
+    const rx = 27, ry = 8, n = 4;
+    if (!front) {
+      ink(1, 0.35);
+      ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    for (let i = 0; i < n; i++) {
+      const a = T * 3 + i * Math.PI * 2 / n;
+      const depth = Math.sin(a);                 // > 0 — ближе к зрителю
+      if ((depth > 0) !== front) continue;
+      const px = cx + Math.cos(a) * rx, py = cy + depth * ry;
+      const k = 1.15 + depth * 0.25;
+      ctx.globalAlpha = front ? 1 : 0.55;
+      // летят по кругу против часовой стрелки — птичка смотрит по ходу движения
+      if (i % 2 === 0) drawBirdie(px, py, k, depth > 0 ? -1 : 1);
+      else drawStarlet(px, py, k, T * 4 + i);
+    }
+    ctx.globalAlpha = 1;
   }
 
   function drawPlayer() {
@@ -1303,8 +1373,10 @@
     if (player.blinkT > 0) ry = 0.6;
     if (ducking) ry *= 0.65;
     if (airborne && player.blinkT <= 0) ry = 3.8;
-    drawEye(x - 0.5, eyeY, 2.5, ry, dead);
-    drawEye(x + 5.8, eyeY, 2.5, ry, dead);
+    if (dead) drawDizzy(x, cy - R * 1.3, false);   // задняя половина хоровода — за головой
+    drawEye(x - 1, eyeY, 2.5, ry, dead);
+    drawEye(x + 7, eyeY, 2.5, ry, dead);
+    if (dead) drawDizzy(x, cy - R * 1.3, true);    // передняя — поверх
 
     // полоски движения позади в прыжке
     if (airborne && !dead) {
