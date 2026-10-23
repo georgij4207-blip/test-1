@@ -3,26 +3,29 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#1E0E19">
+<meta name="theme-color" content="#3A4D97">
 <title>Искорка — бегущая звёздочка</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Neucha&display=swap">
 <style>
+  /* Чертёж: синяя калька, белые линии «от руки», рукописный шрифт */
   :root {
-    --bg: #1E0E19;
-    --ink: #FFF1E2;
-    --muted: #D9A98C;
-    --accent: #F08A4B;
-    --accent-dark: #C2572B;
-    --card: #2A1624;
-    --line: #5A3449;
+    --paper: #4B62B6;
+    --paper-deep: #3A4D97;
+    --line: #FFFFFF;
+    --line-soft: rgba(255,255,255,0.72);
+    --line-faint: rgba(255,255,255,0.28);
+    --hand: "Neucha", "Comic Sans MS", "Segoe Print", cursive;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0;
     height: 100%;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--paper-deep);
+    color: var(--line);
+    font-family: var(--hand);
     -webkit-tap-highlight-color: transparent;
     -webkit-user-select: none;
     user-select: none;
@@ -34,7 +37,11 @@
     align-items: center;
     justify-content: center;
     min-height: 100%;
-    background: radial-gradient(120% 80% at 50% 0%, #3A1730 0%, var(--bg) 60%);
+    background-color: var(--paper-deep);
+    background-image:
+      linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+    background-size: 24px 24px;
     padding-block: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-bottom));
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -44,28 +51,27 @@
     width: 100%;
     max-width: 1000px;
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
     margin-bottom: 10px;
   }
   h1 {
     margin: 0;
-    font-family: ui-serif, Georgia, "Times New Roman", serif;
-    font-weight: 500;
-    font-size: clamp(20px, 4vw, 28px);
-    letter-spacing: -0.01em;
+    font-weight: 400;
+    font-size: clamp(22px, 4.4vw, 32px);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
-  h1 span { color: var(--accent); }
   #stage {
     position: relative;
     width: 100%;
     max-width: 1000px;
     touch-action: none;
     cursor: pointer;
-    border-radius: 18px;
+    border-radius: 4px;
     overflow: hidden;
-    box-shadow: 0 0 0 1px rgba(255,180,120,0.08), 0 14px 40px rgba(0,0,0,0.45), 0 0 80px rgba(240,120,70,0.12);
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.85), 0 14px 36px rgba(10,20,60,0.45);
   }
   canvas { display: block; width: 100%; height: 100%; }
   .overlay {
@@ -75,89 +81,92 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(20,8,16,0.35);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    background: rgba(30,42,90,0.35);
     transition: opacity .2s ease;
   }
   .overlay.hidden { opacity: 0; pointer-events: none; }
   .panel {
-    background: rgba(42,22,36,0.94);
-    border: 1px solid var(--line);
-    border-radius: 16px;
+    background: var(--paper);
+    border: 2px solid var(--line);
+    border-radius: 6px;
+    /* двойная рамка, как у листа чертежа */
+    box-shadow: inset 0 0 0 5px var(--paper), inset 0 0 0 6px var(--line-faint), 6px 8px 0 rgba(20,30,70,0.35);
     padding: clamp(14px, 3vw, 24px) clamp(18px, 4vw, 32px);
     text-align: center;
     max-width: min(420px, 90%);
     max-height: calc(100% - 24px);
     overflow-y: auto;
     touch-action: pan-y;
-    box-shadow: 0 16px 40px rgba(0,0,0,0.5);
   }
-  #startScreen .panel { max-width: min(540px, 92%); padding-bottom: 0; }
+  #startScreen .panel { max-width: min(560px, 92%); padding-bottom: 0; }
   /* кнопка «Начать» всегда видна, даже если правила прокручиваются */
   .start-actions {
     position: sticky;
     bottom: 0;
     padding: 4px 0 clamp(14px, 3vw, 24px);
-    background: linear-gradient(to bottom, rgba(42,22,36,0), rgb(42,22,36) 30%);
+    background: linear-gradient(to bottom, rgba(75,98,182,0), var(--paper) 30%);
   }
-  .panel h3 {
-    margin: 12px 0 4px;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-  .rules {
-    margin: 0;
-    padding-left: 1.2em;
-    text-align: left;
-    color: var(--muted);
-    font-size: clamp(13px, 2.6vw, 15px);
-    line-height: 1.45;
-  }
-  .rules li + li { margin-top: 3px; }
-  .rules b { color: var(--ink); font-weight: 600; }
-  .start-hint { margin-top: 8px !important; }
   .panel h2 {
     margin: 0 0 6px;
-    font-family: ui-serif, Georgia, "Times New Roman", serif;
-    font-weight: 500;
-    font-size: clamp(20px, 4.5vw, 28px);
+    font-weight: 400;
+    font-size: clamp(24px, 5vw, 34px);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     text-wrap: balance;
   }
-  .panel p { margin: 4px 0; color: var(--muted); font-size: clamp(13px, 2.6vw, 15px); line-height: 1.45; }
-  .panel .big { color: var(--ink); font-size: clamp(16px, 3.4vw, 20px); font-variant-numeric: tabular-nums; }
-  .panel .record { color: var(--accent); font-weight: 600; }
+  .panel h3 {
+    display: inline-block;
+    margin: 12px 0 4px;
+    font-weight: 400;
+    font-size: 17px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-bottom: 2px dashed var(--line-soft);
+  }
+  .rules, .plan {
+    margin: 0;
+    padding-left: 1.6em;
+    text-align: left;
+    color: var(--line-soft);
+    font-size: clamp(15px, 2.9vw, 18px);
+    line-height: 1.35;
+  }
+  .rules li + li, .plan li + li { margin-top: 4px; }
+  .rules b { color: var(--line); font-weight: 400; text-decoration: underline; text-decoration-style: wavy; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  .plan { display: inline-block; margin-top: 6px; }
+  .plan li:last-child { color: var(--line); }
+  .start-hint { margin-top: 8px !important; }
+  .panel p { margin: 4px 0; color: var(--line-soft); font-size: clamp(15px, 2.9vw, 18px); line-height: 1.35; }
+  .panel .big { color: var(--line); font-size: clamp(19px, 3.8vw, 24px); }
+  .panel .record { color: var(--line); text-decoration: underline wavy; text-underline-offset: 4px; }
   .btn {
     margin-top: 12px;
     appearance: none;
-    border: 0;
-    background: var(--accent);
-    color: #2A1020;
+    border: 2px solid var(--line);
+    background: var(--line);
+    color: var(--paper-deep);
     font: inherit;
-    font-weight: 700;
-    font-size: clamp(14px, 3vw, 16px);
-    padding: 10px 22px;
-    border-radius: 999px;
+    font-size: clamp(18px, 3.6vw, 21px);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 6px 26px 7px;
+    border-radius: 6px 10px 7px 9px;
     cursor: pointer;
-    box-shadow: 0 2px 0 var(--accent-dark), 0 0 24px rgba(240,138,75,0.35);
+    box-shadow: 4px 4px 0 rgba(20,30,70,0.4);
   }
-  .btn:active { transform: translateY(1px); box-shadow: 0 1px 0 var(--accent-dark); }
-  .btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  .btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 rgba(20,30,70,0.4); }
+  .btn:focus-visible { outline: 2px dashed var(--line); outline-offset: 4px; }
   .keys { margin-top: 8px; }
   kbd {
     display: inline-block;
     min-width: 1.6em;
-    padding: 1px 6px;
-    border: 1px solid var(--line);
-    border-bottom-width: 2px;
-    border-radius: 6px;
-    background: #3A2132;
-    color: var(--ink);
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-    font-size: 0.85em;
+    padding: 0 6px;
+    border: 1.5px solid var(--line);
+    border-radius: 5px 7px 5px 6px;
+    background: transparent;
+    color: var(--line);
+    font-family: var(--hand);
+    font-size: 0.9em;
     text-align: center;
   }
   .touch .only-keys { display: none; }
@@ -165,33 +174,36 @@
   .touch .only-touch { display: block; }
   .rotate-tip { display: none; }
   @media (orientation: portrait) and (max-width: 600px) {
-    .touch .rotate-tip { display: block; margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center; }
+    .touch .rotate-tip { display: block; margin-top: 12px; color: var(--line-soft); font-size: 15px; text-align: center; }
   }
   .head-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .sound-btn {
     appearance: none;
     flex: none;
-    border: 1px solid var(--line);
+    border: 1.5px solid var(--line-soft);
     background: transparent;
-    color: var(--muted);
+    color: var(--line);
     font: inherit;
-    font-size: 12px;
-    padding: 4px 10px;
-    border-radius: 999px;
+    font-size: 15px;
+    padding: 2px 12px;
+    border-radius: 6px 9px 6px 8px;
     cursor: pointer;
   }
   .sound-btn[aria-pressed="false"] { opacity: 0.6; text-decoration: line-through; }
-  .sound-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-  footer { margin-top: 10px; color: var(--muted); font-size: 12px; text-align: center; opacity: 0.8; }
+  .sound-btn:focus-visible { outline: 2px dashed var(--line); outline-offset: 2px; }
+  footer { margin-top: 10px; color: var(--line-soft); font-size: 15px; text-align: center; }
   @media (max-height: 460px) {
     header { margin-bottom: 6px; }
     footer { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .overlay { transition: none; }
   }
 </style>
 </head>
 <body>
 <header>
-  <h1><span>✳</span> Искорка</h1>
+  <h1>✳ Искорка</h1>
   <div class="head-right">
     <button class="sound-btn" id="soundBtn" type="button" aria-pressed="true">Звук вкл</button>
   </div>
@@ -231,6 +243,12 @@
   <div class="overlay hidden" id="overScreen">
     <div class="panel">
       <h2>Игра окончена</h2>
+      <ol class="plan">
+        <li>Бежать.</li>
+        <li>Прыгать через всё подряд.</li>
+        <li id="planHit">Врезаться в препятствие.</li>
+        <li>Бум!</li>
+      </ol>
       <p class="big">Счёт: <b id="finalScore">0</b></p>
       <p id="recordLine">Рекорд: <b id="finalHi">0</b></p>
       <button class="btn" id="restartBtn" type="button">Ещё раз</button>
@@ -252,45 +270,14 @@
 (() => {
   'use strict';
 
-  // ---------- Палитра: закат ----------
+  // ---------- Палитра: чертёж ----------
   const C = {
-    skyTop: '#2B1238',
-    skyMid1: '#6E1F4A',
-    skyMid2: '#C2413F',
-    skyLow: '#F27A3A',
-    skyHorizon: '#FFC067',
-    sunCore: '#FFF0B8',
-    sunEdge: '#FFB24F',
-    cloudFarTop: '#F7A58A', cloudFarBot: '#B44E68',
-    cloudNearTop: '#FFD8A8', cloudNearBot: '#E2706A',
-    mountain: '#9E3F5A',
-    hillMid: '#64244A',
-    hillNear: '#3B1733',
-    ground: '#22101C',
-    groundRim: '#FF9F55',
-    pebble: '#4A2638',
-    ink: '#FFF3E4',
-    muted: '#FFCFA8',
-    spark: '#E07A4F',
-    sparkShade: '#C25E36',
-    leg: '#C4552C',
-    eyeWhite: '#FFFDF8',
-    pupil: '#2A1220',
-    dark: '#2A1726',
-    darkEdge: '#7C4A60',
-    darkLine: '#5B3549',
-    rim: '#FFA35C',
-    code: '#1A0F1D',
-    codeBar: '#33202F',
-    codeOrange: '#FF9A5C',
-    codeYellow: '#FFD166',
-    codeTeal: '#7FD8C0',
-    codeLilac: '#CDA6F0',
-    err: '#FF5547',
-    errDark: '#8A1C18',
-    warn: '#FFC44D',
-    warnDark: '#8A5A10',
-    dust: '#FFC08A',
+    bg: '#4B62B6',
+    body: '#5C74C6',                    // чуть светлее фона — заливка героя
+    ink: '#3A4D97',                     // тёмно-синий: зрачки, обводка надписей
+    line: '#FFFFFF',
+    grid: 'rgba(255,255,255,0.06)',
+    gridMajor: 'rgba(255,255,255,0.13)',
   };
 
   // ---------- Константы мира ----------
@@ -328,7 +315,6 @@
 
   // ---------- Размеры ----------
   let W = 800, scale = 1, dpr = 1;
-  let skyGrad = null;
 
   function resize() {
     const cssW = stage.clientWidth;
@@ -344,13 +330,6 @@
     canvas.height = Math.round(cssH * dpr);
     scale = cssH / H;
     W = cssW / scale;
-
-    skyGrad = ctx.createLinearGradient(0, 0, 0, GROUND);
-    skyGrad.addColorStop(0, C.skyTop);
-    skyGrad.addColorStop(0.35, C.skyMid1);
-    skyGrad.addColorStop(0.62, C.skyMid2);
-    skyGrad.addColorStop(0.85, C.skyLow);
-    skyGrad.addColorStop(1, C.skyHorizon);
   }
 
   // ---------- Состояние ----------
@@ -362,7 +341,7 @@
 
   let mode = 'ready';  // ready | running | paused | over
   let speed, baseSpeed, elapsed, dist, score, hi = loadHi();
-  let obstacles = [], particles = [], cloudsFar = [], cloudsNear = [], pebbles = [], stars = [];
+  let obstacles = [], particles = [], cloudsFar = [], cloudsNear = [], pebbles = [];
   let nextGap = 0, sinceSpawn = 0, flash = 0, shake = 0, overAt = 0, scroll = 0;
   let newRecord = false;
   let popups = [];
@@ -404,12 +383,14 @@
     sinceSpawn = 0; nextGap = W * 0.6; flash = 0; shake = 0; newRecord = false;
     speech.t = 0; lastSpoke = -10;
     popups = [];
+    noteNo = 0;
   }
 
   function makeCloud(far, x) {
     return far
-      ? { x, y: 50 + Math.random() * 50, s: 0.45 + Math.random() * 0.35 }
-      : { x, y: 45 + Math.random() * 60, s: 0.85 + Math.random() * 0.5 };
+      ? { x, y: 75 + Math.random() * 25, s: 0.45 + Math.random() * 0.35 }
+      : { x, y: 90 + Math.random() * 22, s: 0.85 + Math.random() * 0.5,
+          label: Math.random() < 0.25 ? pick(['ОБЛАКО', 'ТОЖЕ ОБЛАКО', 'ТУЧКА (НЕ ДОЖДЬ)', 'КУЧЕВОЕ, НАВЕРНОЕ']) : '' };
   }
 
   function initScenery() {
@@ -419,10 +400,6 @@
     pebbles = [];
     for (let i = 0; i < 40; i++) {
       pebbles.push({ x: Math.random() * 1400, y: GROUND + 8 + Math.random() * 28, w: 2 + Math.random() * 7 });
-    }
-    stars = [];
-    for (let i = 0; i < 40; i++) {
-      stars.push({ x: Math.random(), y: Math.random() * 70, r: 0.5 + Math.random() * 0.9, p: Math.random() * 6 });
     }
   }
 
@@ -666,6 +643,16 @@
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = (arr) => arr[(Math.random() * arr.length) | 0];
 
+  const NOTES = {
+    papers: ['ТЗ, ВЕРСИЯ 17', 'ДЕДЛАЙН ВЧЕРА', 'ОТЧЁТЫ', 'ПРОЧИТАТЬ ПОТОМ'],
+    code: ['ЛЕГАСИ-КОД', 'НЕ ТРОГАТЬ!', 'TODO: ПОЧИНИТЬ', 'РАБОТАЕТ — НЕ ЛЕЗЬ'],
+    error: ['ОШИБКА 404', 'БАГ (ЛЕТАЕТ)', 'УТЕЧКА ПАМЯТИ', 'NULL'],
+  };
+  let noteNo = 0;
+  function maybeNote(o) {
+    if (Math.random() < 0.4) o.note = (++noteNo) + '. ' + pick(NOTES[o.type]);
+  }
+
   function spawn() {
     const x = W + 30;
     const canFly = score > 180;
@@ -678,6 +665,7 @@
         type: 'error', kind: Math.random() < 0.6 ? 'err' : 'warn',
         x, y: level, baseY: level, w: 34, h: 26, phase: Math.random() * 6, extra: rand(0.06, 0.16),
       });
+      maybeNote(obstacles[obstacles.length - 1]);
       return 34;
     }
 
@@ -692,6 +680,7 @@
         obstacles.push({ type: 'papers', x: cx, y: GROUND - h, w, h, seed: Math.random() * 1000 });
         cx += w + rand(2, 6);
       }
+      maybeNote(obstacles[obstacles.length - count]);
       return cx - x;
     }
 
@@ -700,6 +689,7 @@
     const w = wide ? rand(62, 78) : rand(42, 54);
     const h = rand(38, 56);
     obstacles.push({ type: 'code', x, y: GROUND - h, w, h, seed: Math.random() * 1000 });
+    maybeNote(obstacles[obstacles.length - 1]);
     return w;
   }
 
@@ -853,7 +843,7 @@
         // падение сверху на препятствие — отскок, как от батута
         const fromAbove = !player.onGround && player.vy > 0 && prevBottom - 3 <= hb.t + 4;
         if (fromAbove) { bounceOff(o, hb); pb = playerBox(); continue; }
-        gameOver(); break;
+        gameOver(o); break;
       }
       if (!o.passed) {
         if (hb.l < pb.r && hb.r > pb.l) {
@@ -887,7 +877,8 @@
     }
   }
 
-  function gameOver() {
+  const HIT_NAMES = { papers: 'стопку бумаг', code: 'блок кода', error: 'летающую ошибку' };
+  function gameOver(o) {
     mode = 'over';
     overAt = performance.now();
     shake = 1;
@@ -900,10 +891,93 @@
     recordLine.innerHTML = newRecord
       ? '<span class="record">Новый рекорд! ✳</span>'
       : 'Рекорд: <b>' + hi + '</b>';
+    document.getElementById('planHit').textContent = 'Врезаться в ' + (HIT_NAMES[o && o.type] || 'препятствие') + '.';
     setTimeout(() => { if (mode === 'over') overScreen.classList.remove('hidden'); }, 350);
   }
 
-  // ---------- Отрисовка ----------
+  // ---------- Отрисовка: чертёж «от руки» ----------
+  const FONT = 'Neucha, "Comic Sans MS", "Segoe Print", cursive';
+  const J = 0.75;   // насколько «гуляют» линии
+  let boil = 0;     // кадр «кипения» линий — меняется 8 раз в секунду, как в мультфильме
+
+  function nz(a, b) {
+    const v = Math.sin(a * 127.1 + b * 311.7 + boil * 74.7) * 43758.5453;
+    return (v - Math.floor(v)) * 2 - 1;
+  }
+  const wob = (x, y) => nz(x * 0.37 + y * 0.11, y * 0.29 - x * 0.07) * J;
+
+  // Линия «от руки»: концы чуть гуляют, середина слегка выгибается
+  function sLine(x1, y1, x2, y2, move = true) {
+    const ax = x1 + wob(x1, y1), ay = y1 + wob(y1, x1);
+    const bx = x2 + wob(x2, y2), by = y2 + wob(y2, x2);
+    if (move) ctx.moveTo(ax, ay); else ctx.lineTo(ax, ay);
+    const mx = (ax + bx) / 2, my = (ay + by) / 2;
+    const len = Math.hypot(bx - ax, by - ay) || 1;
+    const bow = wob(mx, my) * Math.min(2.2, len * 0.04);
+    ctx.quadraticCurveTo(mx - (by - ay) / len * bow, my + (bx - ax) / len * bow, bx, by);
+  }
+
+  function sPoly(pts, closed) {
+    ctx.beginPath();
+    for (let i = 0; i < pts.length - 1; i++) sLine(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], i === 0);
+    if (closed) {
+      const a = pts[pts.length - 1];
+      sLine(a[0], a[1], pts[0][0], pts[0][1], false);
+      ctx.closePath();
+    }
+  }
+
+  const sRect = (x, y, w, h) => sPoly([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], true);
+
+  function sCircle(cx, cy, rx, ry = rx, begin = true) {
+    const n = Math.max(10, Math.round((rx + ry) * 0.6));
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const k = 1 + wob(i * 7.3 + cx, rx + cy) * 0.06;
+      pts.push([cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k]);
+    }
+    if (begin) ctx.beginPath();
+    const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
+    const m = mid(pts[n - 1], pts[0]);
+    ctx.moveTo(m[0], m[1]);
+    for (let i = 0; i < n; i++) {
+      const q = mid(pts[i], pts[(i + 1) % n]);
+      ctx.quadraticCurveTo(pts[i][0], pts[i][1], q[0], q[1]);
+    }
+    ctx.closePath();
+  }
+
+  function ink(w = 1.6, a = 1) {
+    ctx.strokeStyle = a >= 1 ? C.line : 'rgba(255,255,255,' + a + ')';
+    ctx.lineWidth = w;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+  }
+  function paper(fill = C.bg) { ctx.fillStyle = fill; ctx.fill(); }
+
+  function write(str, x, y, size, align = 'left', a = 1, base = 'alphabetic') {
+    ctx.font = size + 'px ' + FONT;
+    ctx.textAlign = align;
+    ctx.textBaseline = base;
+    ctx.fillStyle = a >= 1 ? C.line : 'rgba(255,255,255,' + a + ')';
+    ctx.fillText(str, x, y);
+  }
+
+  // Пунктирная стрелка-выноска, как на чертеже
+  function arrow(x1, y1, x2, y2, a = 0.9) {
+    ink(1.3, a);
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); sLine(x1, y1, x2, y2); ctx.stroke();
+    ctx.setLineDash([]);
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    ctx.beginPath();
+    ctx.moveTo(x2 - Math.cos(ang - 0.45) * 7, y2 - Math.sin(ang - 0.45) * 7);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x2 - Math.cos(ang + 0.45) * 7, y2 - Math.sin(ang + 0.45) * 7);
+    ctx.stroke();
+  }
+
   function roundRect(x, y, w, h, r) {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
@@ -921,47 +995,39 @@
     { a: 150, l: 0.98 }, { a: 181, l: 0.72 }, { a: 210, l: 0.90 }, { a: 239, l: 0.62 },
   ].map((r, i) => ({ ...r, a: r.a * Math.PI / 180, i }));
 
-  function drawRay(ang, r0, len, w0, w1, color) {
+  function rayPath(ang, r0, len, w0, w1) {
     const c = Math.cos(ang), s = Math.sin(ang);
     const px = -s, py = c;
-    ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(c * r0 + px * w0, s * r0 + py * w0);
     ctx.lineTo(c * len + px * w1, s * len + py * w1);
     ctx.arc(c * len, s * len, w1, ang + Math.PI / 2, ang - Math.PI / 2, true);
     ctx.lineTo(c * r0 - px * w0, s * r0 - py * w0);
     ctx.closePath();
-    ctx.fill();
   }
 
   function drawEye(x, y, rx, ry, dead) {
     if (dead) {
-      ctx.strokeStyle = C.pupil;
-      ctx.lineWidth = 1.6;
-      ctx.lineCap = 'round';
+      ink(1.5);
       ctx.beginPath();
-      ctx.moveTo(x - 2, y - 2); ctx.lineTo(x + 2, y + 2);
-      ctx.moveTo(x + 2, y - 2); ctx.lineTo(x - 2, y + 2);
+      ctx.moveTo(x - 2.2, y - 2.2); ctx.lineTo(x + 2.2, y + 2.2);
+      ctx.moveTo(x + 2.2, y - 2.2); ctx.lineTo(x - 2.2, y + 2.2);
       ctx.stroke();
       return;
     }
-    ctx.fillStyle = C.eyeWhite;
+    ctx.fillStyle = C.line;
     ctx.beginPath();
     ctx.ellipse(x, y, rx, Math.max(0.5, ry), 0, 0, Math.PI * 2);
     ctx.fill();
     if (ry > 1.2) {
-      ctx.fillStyle = C.pupil;
+      ctx.fillStyle = C.ink;
       ctx.beginPath();
       ctx.arc(x + rx * 0.35, y + ry * 0.1, Math.min(rx, ry) * 0.6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#FFFFFF';
-      ctx.beginPath();
-      ctx.arc(x + rx * 0.55, y - ry * 0.3, 0.6, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 
-  function drawPlayer(t) {
+  function drawPlayer() {
     const dead = mode === 'over';
     const airborne = !player.onGround;
     const ducking = player.duck && player.onGround;
@@ -979,67 +1045,63 @@
     const hipY = cy + hipOff;
     const x = player.x;
 
-    // тень
+    // тень — пунктирный овал
     const hgt = GROUND - player.bottom;
     const sh = Math.max(0.3, 1 - hgt / 140);
-    ctx.fillStyle = 'rgba(0,0,0,' + (0.35 * sh) + ')';
+    ink(1.2, 0.5 * sh);
+    ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    ctx.ellipse(x, GROUND + 2, R * 0.85 * sh * sx, 3.2 * sh, 0, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.ellipse(x, GROUND + 4, R * 0.85 * sh * sx, 2.6 * sh, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
     // ножки
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
     for (const side of [0, 1]) {
       const hx = x + (side ? 4.5 : -4.5) * sx;
-      let fx, fy, kx, ky;
+      let fx, fy;
       if (dead) {
         fx = hx + (side ? 4 : -4); fy = player.bottom;
       } else if (airborne) {
-        // поджатые ножки
         fx = hx + (side ? 6 : -3); fy = hipY + legLen * 0.7;
       } else {
         const ph = player.step + side * Math.PI;
         fx = hx + Math.sin(ph) * legLen * 0.75;
         fy = player.bottom - Math.max(0, Math.cos(ph)) * 4.5;
       }
-      kx = (hx + fx) / 2 + 2.5;
-      ky = (hipY + fy) / 2;
-      ctx.strokeStyle = C.leg;
-      ctx.lineWidth = 3.8;
+      ink(2);
       ctx.beginPath();
       ctx.moveTo(hx, hipY);
-      ctx.quadraticCurveTo(kx, ky, fx, fy);
+      ctx.quadraticCurveTo((hx + fx) / 2 + 2.5, (hipY + fy) / 2, fx, fy);
       ctx.stroke();
-      // ступня
-      ctx.fillStyle = C.leg;
       ctx.beginPath();
-      ctx.ellipse(fx + 2, fy - 0.5, 3.6, 2, 0, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.ellipse(fx + 2, fy - 1, 3.6, 2, 0, 0, Math.PI * 2);
+      paper(C.body);
+      ctx.stroke();
     }
 
-    // тело-звёздочка
+    // тело-звёздочка: каждый луч — контур с заливкой
     ctx.save();
     ctx.translate(x, cy);
     ctx.scale(sx, sy);
     const sp = player.spread;
-    const wob = dead ? 0 : Math.sin(player.step * 2) * 0.03;
+    const sway = dead ? 0 : Math.sin(player.step * 2) * 0.03;
+    ink(1.5);
     for (const ray of RAYS) {
-      const ang = ray.a + sp * 0.06 * Math.sin(ray.i * 2.1) + wob;
+      const ang = ray.a + sp * 0.06 * Math.sin(ray.i * 2.1) + sway;
       // нижние лучи короче, чтобы были видны ножки; в прыжке распрямляются
       const down = Math.sin(ray.a) > 0.3 ? 0.6 + 0.4 * sp : 1;
       const len = R * ray.l * down * (1 + sp * 0.22) + (moving ? Math.sin(player.step * 2 + ray.i) * 0.6 : 0);
-      const r0 = R * (0.12 + sp * 0.32);
-      drawRay(ang, r0, len, R * 0.15, R * 0.075, ray.i % 3 === 1 ? C.sparkShade : C.spark);
+      rayPath(ang, R * (0.12 + sp * 0.32), len, R * 0.15, R * 0.075);
+      paper(C.body);
+      ctx.stroke();
     }
-    // ядро
-    ctx.fillStyle = C.spark;
     ctx.beginPath();
-    ctx.arc(0, 0, R * (0.4 - sp * 0.04), 0, Math.PI * 2);
-    ctx.fill();
+    ctx.arc(0, 0, R * (0.42 - sp * 0.04), 0, Math.PI * 2);
+    paper(C.body);
+    ctx.stroke();
     ctx.restore();
 
-    // глазки (без сплющивания, смотрят вперёд)
+    // глазки
     const eyeY = cy - 1.5 * sy;
     let ry = 3.3;
     if (player.blinkT > 0) ry = 0.6;
@@ -1047,6 +1109,14 @@
     if (airborne && player.blinkT <= 0) ry = 3.8;
     drawEye(x - 0.5, eyeY, 2.5, ry, dead);
     drawEye(x + 5.8, eyeY, 2.5, ry, dead);
+
+    // полоски движения позади в прыжке
+    if (airborne && !dead) {
+      ink(1.2, 0.6);
+      ctx.beginPath();
+      for (let i = 0; i < 3; i++) sLine(x - R - 6 - i * 2, cy - 6 + i * 6, x - R - 18 - i * 3, cy - 6 + i * 6);
+      ctx.stroke();
+    }
 
     drawSpeech(x, cy - R * sy * (1 + player.spread * 0.2) - 6);
   }
@@ -1059,221 +1129,181 @@
     const alpha = Math.min(1, speech.t / 0.35);
 
     ctx.save();
-    ctx.font = '800 13px ui-sans-serif, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+    ctx.font = '17px ' + FONT;
     const tw = ctx.measureText(speech.text).width;
-    const bw = tw + 16, bh = 22;
+    const bw = tw + 18, bh = 24;
     const tipX = hx + 6, tipY = headTop;
     let bx = hx + 4 - bw * 0.25;
-    bx = Math.max(6, Math.min(W - bw - 6, bx));
-    const by = tipY - 9 - bh;
+    bx = Math.max(10, Math.min(W - bw - 10, bx));
+    const by = tipY - 10 - bh;
 
     ctx.globalAlpha = alpha;
     ctx.translate(tipX, tipY);
     ctx.scale(pop, pop);
     ctx.translate(-tipX, -tipY);
 
-    ctx.fillStyle = '#FFF6EA';
-    ctx.strokeStyle = C.dark;
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    roundRect(bx, by, bw, bh, 9);
-    ctx.fill();
+    ink(1.8);
+    roundRect(bx, by, bw, bh, 10);
+    paper();
     ctx.stroke();
-    // хвостик к голове
     const tx = Math.max(bx + 8, Math.min(bx + bw - 14, tipX - 3));
     ctx.beginPath();
     ctx.moveTo(tx, by + bh - 1);
     ctx.lineTo(tipX - 1, tipY);
     ctx.lineTo(tx + 9, by + bh - 1);
-    ctx.fill();
+    paper();
     ctx.beginPath();
     ctx.moveTo(tx, by + bh);
     ctx.lineTo(tipX - 1, tipY);
     ctx.lineTo(tx + 9, by + bh);
     ctx.stroke();
 
-    ctx.fillStyle = C.dark;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(speech.text, bx + bw / 2, by + bh / 2 + 0.5);
+    write(speech.text, bx + bw / 2, by + bh / 2 + 1, 17, 'center', 1, 'middle');
     ctx.restore();
   }
 
-  function rimTop(x, y, w) {
-    ctx.strokeStyle = C.rim;
-    ctx.globalAlpha = 0.85;
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(x + 2, y + 0.7);
-    ctx.lineTo(x + w - 2, y + 0.7);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-
+  // Стопка бумаг: листы-контуры, верхний — с каракулями и скрепкой
   function drawPapers(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
     const sheet = 5;
     const n = Math.round(o.h / sheet);
-    ctx.lineWidth = 1;
+    ink(1.3);
     for (let i = 0; i < n; i++) {
-      const y = o.y + o.h - (i + 1) * sheet;
+      const y = o.h - (i + 1) * sheet;
       const off = Math.sin(o.seed + i * 2.3) * 2.5;
-      ctx.fillStyle = C.dark;
-      ctx.strokeStyle = C.darkEdge;
-      roundRect(o.x + off, y, o.w, sheet, 1.2);
-      ctx.fill();
+      sRect(off, y, o.w, sheet);
+      paper();
       ctx.stroke();
     }
-    // верхний лист с «текстом»
     const topOff = Math.sin(o.seed + (n - 1) * 2.3) * 2.5;
-    ctx.save();
-    ctx.translate(o.x + topOff + o.w / 2, o.y - 3);
+    ctx.translate(topOff + o.w / 2, -3);
     ctx.rotate(Math.sin(o.seed) * 0.08);
-    ctx.fillStyle = C.dark;
-    ctx.strokeStyle = C.darkEdge;
-    roundRect(-o.w / 2 - 1, -4, o.w + 2, 8, 1.5);
-    ctx.fill(); ctx.stroke();
-    rimTop(-o.w / 2 - 1, -4, o.w + 2);
-    ctx.strokeStyle = C.darkLine;
-    ctx.beginPath();
-    ctx.moveTo(-o.w / 2 + 4, -0.5); ctx.lineTo(o.w / 2 - 6, -0.5);
-    ctx.moveTo(-o.w / 2 + 4, 2); ctx.lineTo(o.w / 4, 2);
+    sRect(-o.w / 2 - 1, -4, o.w + 2, 8);
+    paper();
     ctx.stroke();
-    ctx.restore();
+    ink(1, 0.7);
+    ctx.beginPath();
+    sLine(-o.w / 2 + 4, -1, o.w / 2 - 8, -1);
+    sLine(-o.w / 2 + 4, 2, o.w / 5, 2);
+    ctx.stroke();
     // скрепка
-    ctx.strokeStyle = C.rim;
-    ctx.lineWidth = 1.6;
+    ink(1.3);
     ctx.beginPath();
-    ctx.moveTo(o.x + o.w - 8 + topOff, o.y - 10);
-    ctx.lineTo(o.x + o.w - 8 + topOff, o.y + 4);
+    ctx.moveTo(o.w / 2 - 9, 3);
+    ctx.lineTo(o.w / 2 - 9, -8);
+    ctx.arc(o.w / 2 - 7, -8, 2, Math.PI, 0);
+    ctx.lineTo(o.w / 2 - 5, 1);
     ctx.stroke();
-  }
-
-  function drawCode(o) {
-    ctx.fillStyle = C.code;
-    ctx.strokeStyle = C.darkEdge;
-    ctx.lineWidth = 1.2;
-    roundRect(o.x, o.y, o.w, o.h, 6);
-    ctx.fill(); ctx.stroke();
-    ctx.save();
-    roundRect(o.x, o.y, o.w, o.h, 6);
-    ctx.clip();
-    ctx.fillStyle = C.codeBar;
-    ctx.fillRect(o.x, o.y, o.w, 9);
     ctx.restore();
-    rimTop(o.x + 3, o.y, o.w - 6);
-    const dots = [C.err, C.warn, C.codeTeal];
-    dots.forEach((c, i) => {
-      ctx.fillStyle = c;
-      ctx.beginPath();
-      ctx.arc(o.x + 6 + i * 6, o.y + 4.5, 1.8, 0, Math.PI * 2);
-      ctx.fill();
-    });
-    // строки кода
-    const colors = [C.codeOrange, C.codeTeal, C.codeYellow, C.codeLilac];
-    ctx.lineCap = 'round';
-    ctx.lineWidth = 2.4;
-    let y = o.y + 16;
-    let k = 0;
-    while (y < o.y + o.h - 5) {
-      const indent = (Math.floor(Math.abs(Math.sin(o.seed + k * 1.9)) * 3)) * 5;
-      let x = o.x + 6 + indent;
-      const parts = 1 + (Math.floor(Math.abs(Math.cos(o.seed * 0.7 + k)) * 3));
-      for (let p = 0; p < parts && x < o.x + o.w - 8; p++) {
-        const len = 5 + Math.abs(Math.sin(o.seed + k * 3.1 + p * 2.7)) * 12;
-        const end = Math.min(x + len, o.x + o.w - 6);
-        ctx.strokeStyle = colors[(k + p + Math.floor(o.seed)) % colors.length];
-        ctx.beginPath();
-        ctx.moveTo(x, y); ctx.lineTo(end, y);
-        ctx.stroke();
-        x = end + 4;
-      }
-      y += 6.5;
-      k++;
-    }
   }
 
+  // Блок кода: окошко с «</>»
+  function drawCode(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ink(1.6);
+    sRect(0, 0, o.w, o.h);
+    paper();
+    ctx.stroke();
+    ctx.beginPath();
+    sLine(0, 9, o.w, 9);
+    ctx.stroke();
+    ink(1.1);
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(6 + i * 6, 4.5, 1.6, 0, Math.PI * 2); ctx.stroke(); }
+    write('</>', o.w / 2, 9 + (o.h - 9) * 0.42, Math.min(18, o.h * 0.4), 'center', 1, 'middle');
+    ink(1, 0.6);
+    ctx.beginPath();
+    const y1 = 9 + (o.h - 9) * 0.72;
+    sLine(6, y1, o.w * 0.6, y1);
+    if (o.h > 44) sLine(10, y1 + 6, o.w - 8, y1 + 6);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Летающая ошибка: значок с крылышками и полосками скорости
   function drawError(o) {
     const flap = Math.sin(o.phase);
-    const isErr = o.kind === 'err';
-    // свечение
-    const g = ctx.createRadialGradient(o.x, o.y, 4, o.x, o.y, 26);
-    g.addColorStop(0, isErr ? 'rgba(255,85,71,0.45)' : 'rgba(255,196,77,0.45)');
-    g.addColorStop(1, 'rgba(255,85,71,0)');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(o.x, o.y, 26, 0, Math.PI * 2); ctx.fill();
-    // крылышки
-    ctx.fillStyle = C.dark;
-    ctx.strokeStyle = C.darkEdge;
-    ctx.lineWidth = 1;
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ink(1.2, 0.6);
+    ctx.beginPath();
+    sLine(18, -5, 34, -5);
+    sLine(20, 2, 40, 2);
+    sLine(18, 9, 30, 9);
+    ctx.stroke();
+    ink(1.3);
     for (const side of [-1, 1]) {
       ctx.save();
-      ctx.translate(o.x + side * 9, o.y - 2);
+      ctx.translate(side * 9, -2);
       ctx.rotate(side * (0.5 + flap * 0.55));
-      ctx.beginPath();
-      ctx.ellipse(side * 8, -2, 9, 4.5, 0, 0, Math.PI * 2);
-      ctx.fill(); ctx.stroke();
+      sCircle(side * 8, -2, 9, 4.5);
+      paper();
+      ctx.stroke();
       ctx.restore();
     }
-    // значок
-    if (isErr) {
-      ctx.fillStyle = C.err;
+    ink(1.8);
+    if (o.kind === 'err') {
+      sCircle(0, 0, 12);
+      paper();
+      ctx.stroke();
+      ink(2.4);
       ctx.beginPath();
-      ctx.arc(o.x, o.y, 12, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = C.errDark; ctx.lineWidth = 1.4; ctx.stroke();
-      ctx.strokeStyle = '#FFF6EA';
-      ctx.lineWidth = 2.8; ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(o.x - 4.5, o.y - 4.5); ctx.lineTo(o.x + 4.5, o.y + 4.5);
-      ctx.moveTo(o.x + 4.5, o.y - 4.5); ctx.lineTo(o.x - 4.5, o.y + 4.5);
+      sLine(-4.5, -4.5, 4.5, 4.5);
+      sLine(4.5, -4.5, -4.5, 4.5);
       ctx.stroke();
     } else {
-      ctx.fillStyle = C.warn;
-      ctx.strokeStyle = C.warnDark;
-      ctx.lineWidth = 1.4;
-      ctx.lineJoin = 'round';
-      ctx.beginPath();
-      ctx.moveTo(o.x, o.y - 13);
-      ctx.lineTo(o.x + 13, o.y + 10);
-      ctx.lineTo(o.x - 13, o.y + 10);
-      ctx.closePath();
-      ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = C.dark;
-      ctx.lineWidth = 2.8; ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(o.x, o.y - 5); ctx.lineTo(o.x, o.y + 2);
+      sPoly([[0, -13], [13, 10], [-13, 10]], true);
+      paper();
       ctx.stroke();
-      ctx.fillStyle = C.dark;
-      ctx.beginPath(); ctx.arc(o.x, o.y + 6.2, 1.6, 0, Math.PI * 2); ctx.fill();
+      ink(2.4);
+      ctx.beginPath();
+      sLine(0, -5, 0, 2);
+      ctx.stroke();
+      ctx.fillStyle = C.line;
+      ctx.beginPath(); ctx.arc(0, 6, 1.6, 0, Math.PI * 2); ctx.fill();
     }
+    ctx.restore();
   }
 
-  function drawCloud(c, top, bot, alpha) {
+  // Выноска с номером и подписью над препятствием
+  function drawNote(o) {
+    if (!o.note) return;
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    const ax = o.type === 'error' ? 8 : o.w * 0.65;
+    const ay = o.type === 'error' ? -13 : -6;
+    const tx = ax + 18, ty = Math.max(62 - o.y, ay - 30);
+    arrow(tx - 2, ty + 4, ax + 2, ay - 2, 0.85);
+    write(o.note, tx, ty, 15, 'left', 0.95);
+    ctx.restore();
+  }
+
+  // Облако: обводим силуэт целиком (толстый штрих + заливка поверх оставляют только внешний контур)
+  const CLOUD = [[0, 0, 14], [18, -7, 18], [40, -2, 14], [56, 3, 9]];
+  function cloudPath() {
+    ctx.beginPath();
+    for (const [cx, cy, r] of CLOUD) sCircle(cx, cy, r, r, false);
+    ctx.rect(-12, 0, 76, 12);
+  }
+  function drawCloud(c, a) {
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.scale(c.s, c.s);
-    ctx.globalAlpha = alpha;
-    const g = ctx.createLinearGradient(0, -24, 0, 12);
-    g.addColorStop(0, top);
-    g.addColorStop(1, bot);
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(0, 0, 14, 0, Math.PI * 2);
-    ctx.arc(18, -7, 18, 0, Math.PI * 2);
-    ctx.arc(40, -2, 14, 0, Math.PI * 2);
-    ctx.arc(56, 3, 9, 0, Math.PI * 2);
-    ctx.fill();
-    roundRect(-12, 0, 78, 12, 6);
+    cloudPath();
+    ink(3.2 / c.s, a);
+    ctx.stroke();
+    ctx.fillStyle = C.bg;
     ctx.fill();
     ctx.restore();
+    if (c.label) write(c.label, c.x + 22 * c.s, c.y + 30 * c.s, 13, 'center', a * 0.8);
   }
 
-  function drawRidge(color, amp, base, freq, par, pointy) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(-10, GROUND + 1);
+  function drawRidge(a, amp, base, freq, par, pointy) {
     const off = scroll * par;
-    for (let x = -10; x <= W + 10; x += 6) {
+    ctx.beginPath();
+    let first = true;
+    for (let x = -10; x <= W + 10; x += 8) {
       const wx = x + off;
       let v;
       if (pointy) {
@@ -1281,126 +1311,159 @@
       } else {
         v = (Math.sin(wx * freq) * 0.6 + Math.sin(wx * freq * 2.3 + 1.3) * 0.4 + 1) / 2;
       }
-      ctx.lineTo(x, base - v * amp);
+      const y = base - v * amp + wob(wx, base) * 0.5;
+      if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
     }
-    ctx.lineTo(W + 10, GROUND + 1);
+    ctx.lineTo(W + 10, GROUND);
+    ctx.lineTo(-10, GROUND);
     ctx.closePath();
+    ctx.fillStyle = 'rgba(75,98,182,0.85)';
     ctx.fill();
+    // контур рисуем без нижней кромки
+    ctx.beginPath();
+    first = true;
+    for (let x = -10; x <= W + 10; x += 8) {
+      const wx = x + off;
+      let v;
+      if (pointy) {
+        v = (1 - Math.abs(Math.sin(wx * freq))) * 0.7 + (1 - Math.abs(Math.sin(wx * freq * 2.7 + 1.1))) * 0.3;
+      } else {
+        v = (Math.sin(wx * freq) * 0.6 + Math.sin(wx * freq * 2.3 + 1.3) * 0.4 + 1) / 2;
+      }
+      const y = base - v * amp + wob(wx, base) * 0.5;
+      if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+    }
+    ink(1.5, a);
+    ctx.stroke();
+  }
+
+  function drawGrid() {
+    const off = (scroll * 0.08) % 20;
+    ctx.lineWidth = 1;
+    for (let x = -off, k = Math.floor(scroll * 0.08 / 20); x < W; x += 20, k++) {
+      ctx.strokeStyle = k % 5 === 0 ? C.gridMajor : C.grid;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+    }
+    for (let y = 0, k = 0; y < H; y += 20, k++) {
+      ctx.strokeStyle = k % 5 === 0 ? C.gridMajor : C.grid;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+  }
+
+  function drawSun(t) {
+    const sx = W * 0.72, sy = 70, r = 18;
+    ink(1.6, 0.85);
+    sCircle(sx, sy, r);
+    ctx.stroke();
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + t * 0.15;
+      ctx.moveTo(sx + Math.cos(a) * (r + 6), sy + Math.sin(a) * (r + 6));
+      ctx.lineTo(sx + Math.cos(a) * (r + 16), sy + Math.sin(a) * (r + 16));
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    write('СОЛНЦЕ', sx + 44, sy + 40, 14, 'left', 0.75);
+    arrow(sx + 42, sy + 34, sx + r * 0.8, sy + r * 0.8, 0.6);
+  }
+
+  function drawGround() {
+    const off = scroll;
+    // линию рисуем в координатах мира, чтобы её «дрожание» не мельтешило при прокрутке
+    ink(2);
+    ctx.save();
+    ctx.translate(-off, 0);
+    ctx.beginPath();
+    const step = 40;
+    for (let wx = Math.floor(off / step) * step - step, first = true; wx <= off + W + step; wx += step) {
+      sLine(wx, GROUND, wx + step, GROUND, first);
+      first = false;
+    }
+    ctx.stroke();
+    ctx.restore();
+    // штриховка грунта, как в разрезе на чертеже
+    ink(1.1, 0.55);
+    ctx.beginPath();
+    const hs = 9;
+    for (let x = -((off % hs) + hs); x <= W + hs; x += hs) {
+      ctx.moveTo(x, GROUND + 4);
+      ctx.lineTo(x - 7, GROUND + 11);
+    }
+    ctx.stroke();
+    ink(1, 0.35);
+    ctx.beginPath();
+    for (const p of pebbles) {
+      if (p.y < GROUND + 16) continue;
+      ctx.moveTo(p.x + p.w / 2, p.y);
+      ctx.arc(p.x, p.y, p.w / 2.5, 0, Math.PI * 2);
+    }
+    ctx.stroke();
   }
 
   function pad(n) { return String(n).padStart(5, '0'); }
 
   function draw(t) {
+    boil = Math.floor(t * 8);
     ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
     if (shake > 0) ctx.translate(Math.sin(t * 90) * shake * 3, Math.cos(t * 70) * shake * 2);
 
-    // небо
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(-10, -10, W + 20, GROUND + 12);
-
-    // звёзды в верхней части
-    ctx.fillStyle = '#FFE9D6';
-    for (const s of stars) {
-      ctx.globalAlpha = (0.35 + Math.sin(t * 2 + s.p) * 0.25) * (1 - s.y / 80);
-      ctx.beginPath();
-      ctx.arc(s.x * W, s.y, s.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-
-    // солнце со свечением
-    const sunX = W * 0.68, sunY = GROUND - 58, sunR = 40;
-    const glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.6, sunX, sunY, sunR * 4.2);
-    glow.addColorStop(0, 'rgba(255,214,140,0.55)');
-    glow.addColorStop(0.4, 'rgba(255,150,80,0.18)');
-    glow.addColorStop(1, 'rgba(255,120,60,0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(sunX - sunR * 4.2, sunY - sunR * 4.2, sunR * 8.4, sunR * 8.4);
-    const sunG = ctx.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
-    sunG.addColorStop(0, C.sunCore);
-    sunG.addColorStop(1, C.sunEdge);
-    ctx.fillStyle = sunG;
-    ctx.beginPath();
-    ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
-    ctx.fill();
-    // полоски заката на солнце
-    ctx.fillStyle = C.skyLow;
-    for (let i = 0; i < 4; i++) {
-      const y = sunY + 8 + i * 8;
-      ctx.fillRect(sunX - sunR, y, sunR * 2, 1.5 + i * 0.9);
-    }
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+    drawGrid();
+    drawSun(t);
 
     // параллакс: дальние облака, горы, ближние облака, холмы
-    for (const c of cloudsFar) drawCloud(c, C.cloudFarTop, C.cloudFarBot, 0.7);
-    drawRidge(C.mountain, 70, GROUND - 14, 0.0045, 0.04, true);
-    for (const c of cloudsNear) drawCloud(c, C.cloudNearTop, C.cloudNearBot, 0.95);
-    drawRidge(C.hillMid, 34, GROUND - 4, 0.009, 0.14, false);
-    drawRidge(C.hillNear, 16, GROUND + 1, 0.016, 0.32, false);
+    for (const c of cloudsFar) drawCloud(c, 0.45);
+    drawRidge(0.45, 70, GROUND - 14, 0.0045, 0.04, true);
+    for (const c of cloudsNear) drawCloud(c, 0.85);
+    drawRidge(0.65, 34, GROUND - 4, 0.009, 0.14, false);
+    drawRidge(0.85, 16, GROUND, 0.016, 0.32, false);
 
-    // земля
-    ctx.fillStyle = C.ground;
+    ctx.fillStyle = C.bg;
     ctx.fillRect(-10, GROUND, W + 20, H - GROUND + 10);
-    ctx.strokeStyle = C.groundRim;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-10, GROUND + 1);
-    ctx.lineTo(W + 10, GROUND + 1);
-    ctx.stroke();
-    ctx.strokeStyle = C.pebble;
-    ctx.lineWidth = 1.6;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    for (const p of pebbles) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.w, p.y); }
-    ctx.stroke();
+    drawGround();
 
-    // препятствия
     for (const o of obstacles) {
       if (o.type === 'papers') drawPapers(o);
       else if (o.type === 'code') drawCode(o);
       else drawError(o);
     }
+    for (const o of obstacles) drawNote(o);
 
-    // частицы
-    ctx.fillStyle = C.dust;
+    // пыль — белые кружочки
     for (const p of particles) {
-      ctx.globalAlpha = Math.max(0, p.life / p.max) * 0.85;
+      ink(1, Math.max(0, p.life / p.max) * 0.9);
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.stroke();
     }
-    ctx.globalAlpha = 1;
 
-    drawPlayer(t);
+    drawPlayer();
 
-    ctx.font = '800 14px ui-sans-serif, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
     for (const p of popups) {
       ctx.globalAlpha = Math.min(1, p.t / 0.4);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = C.dark;
+      ctx.font = '20px ' + FONT;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = C.bg;
       ctx.strokeText(p.text, p.x, p.y);
-      ctx.fillStyle = C.codeYellow;
+      ctx.fillStyle = C.line;
       ctx.fillText(p.text, p.x, p.y);
     }
     ctx.globalAlpha = 1;
 
-    // счёт
-    ctx.font = '700 15px ui-monospace, Menlo, Consolas, monospace';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'top';
-    ctx.shadowColor = 'rgba(0,0,0,0.35)';
-    ctx.shadowBlur = 4;
+    // рамка листа, заголовок и счёт
+    ink(1.3, 0.8);
+    sRect(6, 6, W - 12, H - 12);
+    ctx.stroke();
+    write('ПЛАН ЗАБЕГА ИСКОРКИ', 18, 30, 19, 'left', 0.95);
+    write('масштаб 1:1', 18, 46, 13, 'left', 0.6);
+
     const showScore = !(flash > 0 && Math.floor(flash * 8) % 2 === 0);
-    ctx.fillStyle = C.ink;
-    if (showScore) ctx.fillText(pad(score || 0), W - 16, 14);
-    const sw = ctx.measureText('00000').width;
-    ctx.fillStyle = C.muted;
-    ctx.globalAlpha = 0.85;
-    ctx.fillText('РЕКОРД ' + pad(hi), W - 16 - sw - 16, 14);
-    ctx.globalAlpha = 1;
-    ctx.shadowBlur = 0;
-    ctx.shadowColor = 'transparent';
+    if (showScore) write('СЧЁТ ' + pad(score || 0), W - 18, 30, 19, 'right', 1);
+    write('РЕКОРД ' + pad(hi), W - 18, 46, 14, 'right', 0.7);
   }
 
   // ---------- Цикл ----------
