@@ -221,7 +221,7 @@
         <li><b>Офисный хлам на земле</b> — стопки бумаг, блоки кода, кружки, мониторы, коробки, клавиатуры, кактусы и конусы — нужно перепрыгнуть.</li>
         <li><b>Летающие помехи</b> — ошибки, жуки-баги, бумажные самолётики и часы-дедлайны — появляются после 180 очков. Через низкие прыгайте, под средними пригибайтесь, под высокими можно просто пробежать.</li>
         <li><b>Батут.</b> Если приземлиться на препятствие сверху, Искорка отскочит и получит <b>+25 очков</b>.</li>
-        <li>Удар сбоку или снизу — игра окончена.</li>
+        <li><b>Три запасные жизни.</b> Удар сбоку или снизу отнимает одну: Искорка мигает и пару секунд неуязвима. Когда запасные жизни кончатся, следующий удар заканчивает игру.</li>
         <li>Очки идут за пройденное расстояние. Скорость постепенно растёт. Рекорд сохраняется в браузере.</li>
       </ul>
       <h3>Управление</h3>
@@ -353,6 +353,8 @@
     step: 0, spread: 0, blink: 2.5, blinkT: 0, slope: 0, tilt: 0,
   };
   let moveSpeed = 0;   // фактическая скорость с учётом склона
+  const LIVES = 3;     // запасные жизни
+  let lives = LIVES, invuln = 0;
 
   let mode = 'ready';  // ready | running | paused | over
   let speed, baseSpeed, elapsed, dist, score, hi = loadHi();
@@ -372,6 +374,7 @@
           'Деплой не ждёт!', 'Я быстрый!', 'Ничего не сломаю!', 'Ещё чуть-чуть!', 'Красота!', 'Вперёд!'],
     milestone: ['Еду дальше!', 'Разгоняюсь!', 'Не остановить!', 'Ещё пятьсот!'],
     bounce: ['Опа!', 'Батут!', 'Боинь!', 'Пружинка!', 'Уи-и-и!'],
+    revive: ['Я в порядке!', 'Ещё живой!', 'Не считается!', 'Пф, царапина!', 'Перезапуск!', 'Ой! Но я цел!'],
   };
   const lastLine = {};
   const speech = { text: '', t: 0, dur: 0, prio: 0 };
@@ -402,6 +405,7 @@
     obstacles = []; particles = [];
     player.bottom = groundY(PLAYER_X); player.vy = 0; player.onGround = true;
     player.slope = 0; player.tilt = 0;
+    lives = LIVES; invuln = 0;
     player.duck = false; player.jumpHeld = false; player.fastFall = false;
     player.squash = 0; player.spread = 0;
     sinceSpawn = 0; nextGap = W * 0.6; flash = 0; shake = 0; newRecord = false;
@@ -645,6 +649,14 @@
   }
 
   // Приземление: мягкий «бум»
+  // Удар: короткий «бом» с понижением тона
+  function hurtSound() {
+    if (!audio || muted || audio.state !== 'running') return;
+    const t = audio.currentTime;
+    blip(t, 'triangle', 420, 110, 0.22, 0.28);
+    noiseHit(t, 'lowpass', 700, 0.7, 0.14, 0.12);
+  }
+
   function landSound() {
     if (!audio || muted || audio.state !== 'running') return;
     const t = audio.currentTime;
@@ -861,6 +873,8 @@
     if (Math.floor(newScore / 500) > Math.floor(score / 500)) say('milestone', 2, 1, 0);
     score = newScore;
     flash = Math.max(0, flash - dt);
+    invuln = Math.max(0, invuln - dt);
+    shake = Math.max(0, shake - dt * 3);
 
     // физика искорки
     const prevBottom = player.bottom;
@@ -925,6 +939,8 @@
         // падение сверху на препятствие — отскок, как от батута
         const fromAbove = !player.onGround && player.vy > 0 && prevBottom - 3 <= hb.t + 4;
         if (fromAbove) { bounceOff(o, hb); pb = playerBox(); continue; }
+        if (invuln > 0) { o.passed = true; continue; }          // мигает — неуязвима
+        if (lives > 0) { hurt(o); pb = playerBox(); continue; }  // тратим запасную жизнь
         gameOver(o); break;
       }
       if (!o.passed) {
@@ -972,6 +988,24 @@
     bug: 'жука-бага', plane: 'бумажный самолётик', clock: 'часы-дедлайн', mug: 'кружку кофе',
     monitor: 'монитор', boxes: 'коробки', keyboard: 'клавиатуру', cactus: 'кактус', cone: 'конус',
   };
+  // Удар с запасной жизнью: подскок, мигание и пара секунд неуязвимости
+  function hurt(o) {
+    lives--;
+    invuln = 2;
+    o.passed = true;
+    shake = 0.7;
+    player.vy = -420;
+    player.onGround = false;
+    player.duck = false;
+    player.fastFall = false;
+    player.squash = 0.3;
+    puff(player.x, player.bottom - R, 10);
+    kickRays(4, 10);
+    hurtSound();
+    say('revive', 3, 1, 0);
+    popups.push({ x: player.x + 18, y: player.bottom - 50, t: 0.9, text: '−1 ♥' });
+  }
+
   function gameOver(o) {
     mode = 'over';
     overAt = performance.now();
@@ -1166,6 +1200,8 @@
   }
 
   function drawPlayer() {
+    const blinkOff = invuln > 0 && Math.floor(invuln * 10) % 2 === 0;
+    ctx.globalAlpha = blinkOff ? 0.3 : 1;
     const dead = mode === 'over';
     const airborne = !player.onGround;
     const ducking = player.duck && player.onGround;
@@ -1265,6 +1301,7 @@
     }
 
     ctx.restore();
+    ctx.globalAlpha = 1;
 
     drawSpeech(x, cy - R * sy * (1 + player.spread * 0.2) - 6);
   }
@@ -1778,6 +1815,31 @@
     ctx.stroke();
   }
 
+  // Запасные жизни — сердечки под заголовком: целые залиты, потерянные — пунктир
+  function heartPath(x, y, r) {
+    ctx.beginPath();
+    ctx.moveTo(x, y + r * 0.9);
+    ctx.bezierCurveTo(x - r * 1.3, y, x - r * 0.9, y - r * 1.1, x, y - r * 0.35);
+    ctx.bezierCurveTo(x + r * 0.9, y - r * 1.1, x + r * 1.3, y, x, y + r * 0.9);
+    ctx.closePath();
+  }
+  function drawLives() {
+    write('ЖИЗНИ', 18, 66, 13, 'left', 0.6);
+    for (let i = 0; i < LIVES; i++) {
+      const x = 66 + i * 17, y = 61;
+      heartPath(x, y, 6);
+      if (i < lives) {
+        ctx.fillStyle = C.line;
+        ctx.fill();
+      } else {
+        ink(1.2, 0.5);
+        ctx.setLineDash([2, 2]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
   function pad(n) { return String(n).padStart(5, '0'); }
 
   function draw(t) {
@@ -1842,6 +1904,7 @@
     ctx.stroke();
     write('ПЛАН ЗАБЕГА ИСКОРКИ', 18, 30, 19, 'left', 0.95);
     write('масштаб 1:1', 18, 46, 13, 'left', 0.6);
+    drawLives();
 
     const showScore = !(flash > 0 && Math.floor(flash * 8) % 2 === 0);
     if (showScore) write('СЧЁТ ' + pad(score || 0), W - 18, 30, 19, 'right', 1);
