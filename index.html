@@ -135,25 +135,6 @@
     font-size: 0.85em;
     text-align: center;
   }
-  #duckBtn {
-    position: absolute;
-    right: 12px;
-    bottom: 12px;
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    border: 1px solid var(--line);
-    background: rgba(42,22,36,0.8);
-    color: var(--accent);
-    font-size: 26px;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    touch-action: none;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.35);
-  }
-  #duckBtn.active { background: var(--accent); color: #2A1020; }
-  .touch #duckBtn { display: flex; }
   .touch .only-keys { display: none; }
   .only-touch { display: none; }
   .touch .only-touch { display: block; }
@@ -165,7 +146,6 @@
   @media (max-height: 460px) {
     header { margin-bottom: 6px; }
     footer { display: none; }
-    #duckBtn { width: 52px; height: 52px; font-size: 22px; }
   }
 </style>
 </head>
@@ -173,7 +153,7 @@
 <header>
   <h1><span>✳</span> Искорка</h1>
   <div class="hint only-keys">Пробел / ↑ — прыжок · ↓ — пригнуться</div>
-  <div class="hint only-touch">Тап — прыжок · ▼ — пригнуться</div>
+  <div class="hint only-touch">Справа — прыжок · слева — пригнуться</div>
 </header>
 
 <div id="stage">
@@ -188,7 +168,7 @@
         <p><kbd>↓</kbd> — пригнуться</p>
       </div>
       <div class="only-touch">
-        <p>Тап по экрану — прыжок<br>Кнопка ▼ или свайп вниз — пригнуться</p>
+        <p>Тап по правой половине — прыжок<br>Удержание на левой половине — пригнуться</p>
       </div>
       <button class="btn" id="startBtn" type="button">Начать</button>
     </div>
@@ -211,7 +191,6 @@
     </div>
   </div>
 
-  <button id="duckBtn" type="button" aria-label="Пригнуться">▼</button>
 </div>
 
 <div class="rotate-tip">Совет: поверните телефон горизонтально — обзор будет шире.</div>
@@ -282,7 +261,6 @@
   const finalScore = document.getElementById('finalScore');
   const finalHi = document.getElementById('finalHi');
   const recordLine = document.getElementById('recordLine');
-  const duckBtn = document.getElementById('duckBtn');
 
   const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
   if (isTouch) document.body.classList.add('touch');
@@ -335,6 +313,7 @@
   let obstacles = [], particles = [], cloudsFar = [], cloudsNear = [], pebbles = [], stars = [];
   let nextGap = 0, sinceSpawn = 0, flash = 0, shake = 0, overAt = 0, scroll = 0;
   let newRecord = false;
+  let zoneHint = 0;
 
   // ---------- Реплики ----------
   const LINES = {
@@ -395,6 +374,7 @@
   function startGame() {
     reset();
     mode = 'running';
+    if (isTouch && zoneHint >= 0) zoneHint = 3.5;
     startScreen.classList.add('hidden');
     overScreen.classList.add('hidden');
     pauseScreen.classList.add('hidden');
@@ -429,7 +409,6 @@
     if (mode !== 'running') { player.duck = false; return; }
     player.duck = on;
     player.fastFall = on && !player.onGround;
-    duckBtn.classList.toggle('active', on);
   }
 
   function pause() {
@@ -462,44 +441,52 @@
     else if (e.code === 'ArrowDown' || e.code === 'KeyS') setDuck(false);
   });
 
-  // Тап / клик по полю — прыжок; свайп вниз — пригнуться
-  let touchStartY = null, swipeDuck = false, activePointer = null;
+  // Касания: правая половина — прыжок, удержание на левой — пригнуться.
+  // Свайп вниз в любом месте тоже пригибает. Мышью — клик в любом месте = прыжок.
+  const pointers = new Map();
+  let duckPointers = 0;
+
+  function inDuckZone(e) {
+    if (e.pointerType === 'mouse' || mode !== 'running') return false;
+    const rect = stage.getBoundingClientRect();
+    return e.clientX - rect.left < rect.width / 2;
+  }
+
   stage.addEventListener('pointerdown', (e) => {
     if (e.target.closest('button')) return;
     e.preventDefault();
-    activePointer = e.pointerId;
-    touchStartY = e.clientY;
-    swipeDuck = false;
-    jumpPress();
+    if (inDuckZone(e)) {
+      pointers.set(e.pointerId, { duck: true, startY: e.clientY });
+      duckPointers++;
+      setDuck(true);
+    } else {
+      pointers.set(e.pointerId, { duck: false, startY: e.clientY });
+      jumpPress();
+    }
   });
   stage.addEventListener('pointermove', (e) => {
-    if (e.pointerId !== activePointer || touchStartY === null) return;
-    if (!swipeDuck && e.clientY - touchStartY > 30 && mode === 'running') {
-      swipeDuck = true;
+    const p = pointers.get(e.pointerId);
+    if (!p || p.duck) return;
+    if (e.clientY - p.startY > 30 && mode === 'running') {
+      p.duck = true;
+      duckPointers++;
       jumpRelease();
       setDuck(true);
     }
   });
   const endPointer = (e) => {
-    if (e.pointerId !== activePointer) return;
-    activePointer = null;
-    touchStartY = null;
-    jumpRelease();
-    if (swipeDuck) { swipeDuck = false; setDuck(false); }
+    const p = pointers.get(e.pointerId);
+    if (!p) return;
+    pointers.delete(e.pointerId);
+    if (p.duck) {
+      duckPointers = Math.max(0, duckPointers - 1);
+      if (duckPointers === 0) setDuck(false);
+    } else {
+      jumpRelease();
+    }
   };
   stage.addEventListener('pointerup', endPointer);
   stage.addEventListener('pointercancel', endPointer);
-
-  // Кнопка «пригнуться» для сенсорных экранов
-  duckBtn.addEventListener('pointerdown', (e) => {
-    e.preventDefault(); e.stopPropagation();
-    duckBtn.setPointerCapture(e.pointerId);
-    if (mode === 'ready' || mode === 'paused') { jumpPress(); return; }
-    setDuck(true);
-  });
-  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) =>
-    duckBtn.addEventListener(ev, (e) => { e.stopPropagation(); setDuck(false); }));
-  duckBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 
   document.getElementById('startBtn').addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
   document.getElementById('restartBtn').addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
@@ -632,6 +619,7 @@
     if (Math.floor(newScore / 500) > Math.floor(score / 500)) say('milestone', 2, 1, 0);
     score = newScore;
     flash = Math.max(0, flash - dt);
+    if (zoneHint > 0) { zoneHint -= dt; if (zoneHint <= 0) zoneHint = -1; }
 
     // физика искорки
     if (!player.onGround) {
@@ -702,7 +690,6 @@
     overAt = performance.now();
     shake = 1;
     player.duck = false;
-    duckBtn.classList.remove('active');
     puff(player.x, player.bottom - R, 14);
     say('hit', 3, 1, 0);
     if (score > hi) { hi = score; newRecord = true; saveHi(hi); }
@@ -1182,6 +1169,25 @@
     ctx.globalAlpha = 1;
 
     drawPlayer(t);
+
+    // подсказка сенсорных зон (только в первой игре, плавно исчезает)
+    if (zoneHint > 0) {
+      const a = Math.min(1, zoneHint / 0.8);
+      ctx.globalAlpha = a * 0.12;
+      ctx.fillStyle = '#FFF3E4';
+      ctx.fillRect(W / 2 - 0.5, 40, 1, GROUND - 60);
+      ctx.globalAlpha = a * 0.75;
+      ctx.font = '600 13px ui-sans-serif, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = C.ink;
+      ctx.shadowColor = 'rgba(30,10,24,0.8)';
+      ctx.shadowBlur = 6;
+      ctx.fillText('удерживайте — пригнуться', W / 4, 70);
+      ctx.fillText('тап — прыжок', W * 0.75, 70);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    }
 
     // счёт
     ctx.font = '700 15px ui-monospace, Menlo, Consolas, monospace';
