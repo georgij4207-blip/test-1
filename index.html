@@ -57,11 +57,6 @@
     letter-spacing: -0.01em;
   }
   h1 span { color: var(--accent); }
-  .hint {
-    color: var(--muted);
-    font-size: clamp(12px, 2.2vw, 14px);
-    text-align: right;
-  }
   #stage {
     position: relative;
     width: 100%;
@@ -198,8 +193,6 @@
 <header>
   <h1><span>✳</span> Искорка</h1>
   <div class="head-right">
-    <div class="hint only-keys">Пробел / ↑ — прыжок · ↓ — пригнуться · M — звук</div>
-    <div class="hint only-touch">Справа — прыжок · слева — пригнуться</div>
     <button class="sound-btn" id="soundBtn" type="button" aria-pressed="true">Звук вкл</button>
   </div>
 </header>
@@ -374,7 +367,6 @@
   let obstacles = [], particles = [], cloudsFar = [], cloudsNear = [], pebbles = [], stars = [];
   let nextGap = 0, sinceSpawn = 0, flash = 0, shake = 0, overAt = 0, scroll = 0;
   let newRecord = false;
-  let zoneHint = 0;
   let popups = [];
   const BOUNCE_BONUS = 25;
   const BOUNCE_V = -540;
@@ -440,7 +432,6 @@
   function startGame() {
     reset();
     mode = 'running';
-    if (isTouch && zoneHint >= 0) zoneHint = 3.5;
     startScreen.classList.add('hidden');
     overScreen.classList.add('hidden');
     pauseScreen.classList.add('hidden');
@@ -803,7 +794,6 @@
     if (Math.floor(newScore / 500) > Math.floor(score / 500)) say('milestone', 2, 1, 0);
     score = newScore;
     flash = Math.max(0, flash - dt);
-    if (zoneHint > 0) { zoneHint -= dt; if (zoneHint <= 0) zoneHint = -1; }
 
     // физика искорки
     const prevBottom = player.bottom;
@@ -1396,25 +1386,6 @@
       ctx.fillText(p.text, p.x, p.y);
     }
     ctx.globalAlpha = 1;
-
-    // подсказка сенсорных зон (только в первой игре, плавно исчезает)
-    if (zoneHint > 0) {
-      const a = Math.min(1, zoneHint / 0.8);
-      ctx.globalAlpha = a * 0.12;
-      ctx.fillStyle = '#FFF3E4';
-      ctx.fillRect(W / 2 - 0.5, 40, 1, GROUND - 60);
-      ctx.globalAlpha = a * 0.75;
-      ctx.font = '600 13px ui-sans-serif, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
-      ctx.textBaseline = 'middle';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = C.ink;
-      ctx.shadowColor = 'rgba(30,10,24,0.8)';
-      ctx.shadowBlur = 6;
-      ctx.fillText('удерживайте — пригнуться', W / 4, 70);
-      ctx.fillText('тап — прыжок', W * 0.75, 70);
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
-    }
 
     // счёт
     ctx.font = '700 15px ui-monospace, Menlo, Consolas, monospace';
