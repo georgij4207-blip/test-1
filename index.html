@@ -1082,7 +1082,7 @@
       const env = Math.sin(Math.PI * k);
       h.ph = (h.ph || 0) + dt * (30 - 14 * k);
       const wave = Math.sin(h.ph);
-      player.tilt = wave * 0.3 * env;
+      player.shakeAng = wave * 0.3 * env;   // трясётся только тело, ножки стоят
       // лучики подталкиваем мягко — только в моменты смены направления
       const dir = wave >= 0 ? 1 : -1;
       if (h.dir && dir !== h.dir) kickRays(0.8 * env, 2.5 * env * dir);
@@ -1473,6 +1473,9 @@
         const u = clamp((hitSeq.t - HIT.stun) / HIT.rise, 0, 1);
         fx = hx + (11 + side * 3) * (1 - u) + (side ? 2 : -2) * u; fy = player.bottom;
         bend = 9 * Math.sin(Math.PI * Math.min(1, u * 1.1));
+      } else if (shaking) {
+        // встряска: ступни стоят на месте, ножки неподвижны
+        fx = hx + (side ? 2 : -2); fy = player.bottom; bend = 2.5;
       } else if (airborne) {
         fx = hx + (side ? 6 : -3); fy = hipY + legLen * 0.75;
         bend = 6 + player.squash * 8;
@@ -1482,7 +1485,6 @@
         fx = hx + Math.sin(ph) * legLen * 0.75;
         fy = player.bottom - lift * 4.5;
         bend = 2.5 + lift * 4 + player.squash * 12;   // поднятая ножка сгибается, на приземлении — пружинят
-        if (shaking) bend += Math.sin(hitSeq.t * 26 + side * 2) * 2.5;
       }
       const mx = (hx + fx) / 2, my = (hipY + fy) / 2;
       const dx = fx - hx, dy = fy - hipY, dl = Math.hypot(dx, dy) || 1;
@@ -1499,6 +1501,13 @@
       paper(C.body);
       ctx.stroke();
     }
+
+    // при встряске тело качается вокруг бёдер отдельно от ножек
+    const bodyShake = shaking ? (player.shakeAng || 0) : 0;
+    ctx.save();
+    ctx.translate(x, hipY);
+    ctx.rotate(bodyShake);
+    ctx.translate(-x + bodyShake * 8, -hipY);
 
     // тело-звёздочка: каждый луч — контур с заливкой
     ctx.save();
@@ -1544,6 +1553,7 @@
       ctx.stroke();
     }
 
+    ctx.restore();   // тряска тела
     ctx.restore();
     inkScale = 1;
     ctx.globalAlpha = 1;
