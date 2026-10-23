@@ -374,7 +374,8 @@
   let lives = LIVES, invuln = 0;
   // Мультяшная реакция на удар: отлёт назад → оглушение → встряска → «бах!» и дальше
   const HIT = { knock: 0.45, stun: 1.45, shake: 3.0, rise: 0.45 };   // rise — сколько встаёт в начале встряски   // границы фаз, секунды от удара
-  let hitSeq = null;   // { t, o, last, kicked }
+  let hitSeq = null;
+  const SPIN = 0.9, LAUNCH = 0.45;   // пробуксовка после «бах!» (вместе с подскоком) и разгон   // { t, o, last, kicked }
 
   let mode = 'ready';  // ready | running | paused | over
   let speed, baseSpeed, elapsed, dist, score, hi = loadHi();
@@ -427,6 +428,7 @@
     player.bottom = groundY(player.x); player.vy = 0; player.onGround = true;
     player.slope = 0; player.tilt = 0;
     lives = LIVES; invuln = 0; hitSeq = null; player.x = PLAYER_X;
+    player.spin = 0; player.launch = 0;
     player.duck = false; player.jumpHeld = false; player.fastFall = false;
     player.squash = 0; player.spread = 0;
     sinceSpawn = 0; nextGap = W * 0.6; flash = 0; shake = 0; newRecord = false;
@@ -1004,7 +1006,8 @@
 
     // склон под искоркой: на подъёме — наклон вперёд, на спуске — чуть назад
     player.slope += (slopeAt(player.x) - player.slope) * Math.min(1, dt * 8);
-    const tiltTarget = player.onGround && mode !== 'over' ? clamp(-player.slope * 2.2, -0.18, 0.35) : 0;
+    let tiltTarget = player.onGround && mode !== 'over' ? clamp(-player.slope * 2.2, -0.18, 0.35) : 0;
+    if (player.spin > 0 && player.onGround) tiltTarget = 0.3;   // пробуксовывая, наклоняется вперёд, как перед рывком
     player.tilt += (tiltTarget - player.tilt) * Math.min(1, dt * 8);
 
     if (mode === 'ready') {
@@ -1034,8 +1037,21 @@
       moveSpeed *= hitSeq.t < HIT.knock ? 0.25 : 0;
       updateHit(dt);
       if (mode !== 'running') return;
-    } else if (player.x < PLAYER_X) {
-      player.x = Math.min(PLAYER_X, player.x + (PLAYER_X - player.x) * dt * 5 + dt * 10);   // догоняет своё место
+    } else if (player.spin > 0) {
+      // пробуксовка на месте: ножки молотят, мир стоит
+      moveSpeed = 0;
+      player.spin -= dt;
+      if (player.spin <= 0) { player.launch = LAUNCH; zoomSfx(); }   // сорвалась с места
+    } else {
+      if (player.launch > 0) {
+        // разгон после пробуксовки: скорость плавно набирается
+        player.launch = Math.max(0, player.launch - dt);
+        const k = 1 - player.launch / LAUNCH;
+        moveSpeed *= k * k * (3 - 2 * k);
+      }
+      if (player.x < PLAYER_X) {
+        player.x = Math.min(PLAYER_X, player.x + (PLAYER_X - player.x) * dt * 5 + dt * 10);   // догоняет своё место
+      }
     }
 
     dist += moveSpeed * dt;
@@ -1072,7 +1088,8 @@
     player.spread += (spreadTarget - player.spread) * Math.min(1, dt * (player.onGround ? 14 : 9));
     // шаги: частота растёт со скоростью
     if (player.onGround && !hitSeq) {
-      player.step += dt * Math.min(moveSpeed / 18, 44) * (player.duck ? 1.3 : 1);
+      const spinning = player.spin > 0;
+      player.step += dt * (spinning ? 62 : Math.min(moveSpeed / 18, 44)) * (player.duck ? 1.3 : 1);
       // каждый раз, когда ножка касается земли, — шажок
       const idx = stepIndex();
       if (idx !== stepIdx) { stepIdx = idx; stepSound(idx & 1); kickRays(0.9, 0.6); }
@@ -1081,7 +1098,10 @@
     // пыль из-под ног
     if (player.onGround && !hitSeq) {
       dustTimer -= dt;
-      if (dustTimer <= 0) { puff(player.x - 8, player.bottom, 1); dustTimer = 0.08; }
+      if (dustTimer <= 0) {
+        if (player.spin > 0) { puff(player.x - 10, player.bottom, 2); dustTimer = 0.03; }   // пыль столбом из-под ног
+        else { puff(player.x - 8, player.bottom, 1); dustTimer = 0.08; }
+      }
     }
 
     // препятствия
@@ -1214,14 +1234,14 @@
     }
     // 4. «бах!» — подскок и бежит дальше, препятствие уже позади
     hitSeq = null;
-    invuln = 0.4;   // короткая передышка, без мигания
+    invuln = SPIN + LAUNCH + 0.3;   // передышка на пробуксовку и разгон, без мигания
+    player.spin = SPIN;
     player.tilt = 0;
     player.vy = -430;
     player.onGround = false;
     player.squash = -0.3;
     kickRays(5, 6);
     bangSound();
-    zoomSfx();
     say('revive', 3, 1, 0);
     popups.push({ x: player.x + 24, y: player.bottom - 76, t: 0.8, text: 'БАХ!', size: 26 });
     puff(player.x, player.bottom, 10);
@@ -1582,6 +1602,20 @@
     ctx.scale(PS, PS);
     ctx.translate(-x, -player.bottom);
     inkScale = PS;
+
+    // пробуксовка: под ногами крутится «колесо» из пунктирных колец
+    if (player.spin > 0 && !airborne) {
+      ctx.save();
+      ink(1.2, 0.7);
+      ctx.setLineDash([3, 3]);
+      ctx.lineDashOffset = -T * 120;
+      for (const r of [5.5, 8.5]) {
+        ctx.beginPath();
+        ctx.ellipse(x + 2, player.bottom - legLen * 0.45, r * 1.3, r * 0.9, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     // ножки — гибкие, «резиновые», как в старых мультфильмах: изгиб колена плавно меняется
     for (const side of [0, 1]) {
