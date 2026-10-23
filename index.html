@@ -332,6 +332,9 @@
   let nextGap = 0, sinceSpawn = 0, flash = 0, shake = 0, overAt = 0, scroll = 0;
   let newRecord = false;
   let zoneHint = 0;
+  let popups = [];
+  const BOUNCE_BONUS = 25;
+  const BOUNCE_V = -540;
 
   // ---------- Реплики ----------
   const LINES = {
@@ -339,6 +342,7 @@
     close: ['Фух!', 'Чуть не!'],
     hit: ['Ой!', 'Ах!'],
     milestone: ['Еду дальше!'],
+    bounce: ['Опа!'],
   };
   const speech = { text: '', t: 0, dur: 0, prio: 0 };
   let lastSpoke = -10;
@@ -366,6 +370,7 @@
     player.squash = 0; player.spread = 0;
     sinceSpawn = 0; nextGap = W * 0.6; flash = 0; shake = 0; newRecord = false;
     speech.t = 0; lastSpoke = -10;
+    popups = [];
   }
 
   function makeCloud(far, x) {
@@ -597,6 +602,30 @@
     noiseHit(t, 'lowpass', 900, 0.7, 0.16, 0.09);
   }
 
+  // «Боинг»: тон взлетает вверх и дрожит, как пружина
+  function boingSound() {
+    if (!audio || muted || audio.state !== 'running') return;
+    const t = audio.currentTime;
+    const o = audio.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(620, t + 0.07);
+    o.frequency.exponentialRampToValueAtTime(330, t + 0.4);
+    const lfo = audio.createOscillator();
+    lfo.frequency.value = 22;
+    const depth = audio.createGain();
+    depth.gain.setValueAtTime(60, t);
+    depth.gain.linearRampToValueAtTime(10, t + 0.4);
+    lfo.connect(depth); depth.connect(o.frequency);
+    const g = audio.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.32, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
+    o.connect(g); g.connect(master);
+    o.start(t); lfo.start(t);
+    o.stop(t + 0.45); lfo.stop(t + 0.45);
+  }
+
   let stepIdx = 0;
   const stepIndex = () => Math.floor((player.step + Math.PI / 2) / Math.PI);
 
@@ -693,7 +722,14 @@
       if (p.life <= 0) particles.splice(i, 1);
     }
 
-    if (mode !== 'paused') speech.t = Math.max(0, speech.t - dt);
+    if (mode !== 'paused') {
+      speech.t = Math.max(0, speech.t - dt);
+      for (let i = popups.length - 1; i >= 0; i--) {
+        popups[i].t -= dt;
+        popups[i].y -= 28 * dt;
+        if (popups[i].t <= 0) popups.splice(i, 1);
+      }
+    }
 
     // моргание
     player.blink -= dt;
@@ -713,8 +749,9 @@
 
     // скорость растёт со временем
     elapsed += dt;
-    const maxSpeed = 980 * speedFactor();
-    speed = Math.min(maxSpeed, baseSpeed + elapsed * 9.5);
+    // разгон в 2,5 раза мягче прежнего; потолок держит игру проходимой
+    const maxSpeed = 720 * speedFactor();
+    speed = Math.min(maxSpeed, baseSpeed + elapsed * 3.8);
 
     dist += speed * dt;
     const newScore = Math.floor(dist / 40);
@@ -725,6 +762,7 @@
     if (zoneHint > 0) { zoneHint -= dt; if (zoneHint <= 0) zoneHint = -1; }
 
     // физика искорки
+    const prevBottom = player.bottom;
     if (!player.onGround) {
       const g = player.fastFall ? GRAVITY * 3 : GRAVITY;
       player.vy += g * dt;
@@ -767,7 +805,7 @@
       nextGap = minGap + Math.random() * speed * 0.7;
     }
 
-    const pb = playerBox();
+    let pb = playerBox();
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const o = obstacles[i];
       if (o.type === 'error') {
@@ -779,7 +817,12 @@
       }
       if (o.x + (o.w || 30) < -40) { obstacles.splice(i, 1); continue; }
       const hb = hitbox(o);
-      if (overlap(pb, hb)) { gameOver(); break; }
+      if (overlap(pb, hb)) {
+        // падение сверху на препятствие — отскок, как от батута
+        const fromAbove = !player.onGround && player.vy > 0 && prevBottom - 3 <= hb.t + 4;
+        if (fromAbove) { bounceOff(o, hb); pb = playerBox(); continue; }
+        gameOver(); break;
+      }
       if (!o.passed) {
         if (hb.l < pb.r && hb.r > pb.l) {
           // пока препятствие под/над искоркой — запоминаем минимальный зазор
@@ -792,6 +835,23 @@
           else if (o.jumped) say('jump', 0, 0.3, 3);
         }
       }
+    }
+  }
+
+  function bounceOff(o, hb) {
+    player.bottom = hb.t + 3;
+    player.vy = BOUNCE_V;
+    player.fastFall = false;
+    player.squash = 0.35;
+    player.spread = 1;
+    puff(player.x, player.bottom, 6);
+    boingSound();
+    say('bounce', 2, 1, 0);
+    if (!o.bounced) {
+      o.bounced = true;
+      o.passed = true;
+      dist += BOUNCE_BONUS * 40;
+      popups.push({ x: player.x + 18, y: player.bottom - 46, t: 0.9, text: '+' + BOUNCE_BONUS });
     }
   }
 
@@ -1279,6 +1339,19 @@
     ctx.globalAlpha = 1;
 
     drawPlayer(t);
+
+    ctx.font = '800 14px ui-sans-serif, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    for (const p of popups) {
+      ctx.globalAlpha = Math.min(1, p.t / 0.4);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = C.dark;
+      ctx.strokeText(p.text, p.x, p.y);
+      ctx.fillStyle = C.codeYellow;
+      ctx.fillText(p.text, p.x, p.y);
+    }
+    ctx.globalAlpha = 1;
 
     // подсказка сенсорных зон (только в первой игре, плавно исчезает)
     if (zoneHint > 0) {
