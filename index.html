@@ -359,7 +359,7 @@
   const LIVES = 3;     // запасные жизни
   let lives = LIVES, invuln = 0;
   // Мультяшная реакция на удар: отлёт назад → оглушение → встряска → «бах!» и дальше
-  const HIT = { knock: 0.6, stun: 2.1, shake: 4.5 };   // границы фаз, секунды от удара
+  const HIT = { knock: 0.5, stun: 1.7, shake: 3.5 };   // границы фаз, секунды от удара
   let hitSeq = null;   // { t, o, last, kicked }
 
   let mode = 'ready';  // ready | running | paused | over
