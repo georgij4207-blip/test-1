@@ -93,8 +93,38 @@
     padding: clamp(14px, 3vw, 24px) clamp(18px, 4vw, 32px);
     text-align: center;
     max-width: min(420px, 90%);
+    max-height: calc(100% - 24px);
+    overflow-y: auto;
+    touch-action: pan-y;
     box-shadow: 0 16px 40px rgba(0,0,0,0.5);
   }
+  #startScreen .panel { max-width: min(540px, 92%); padding-bottom: 0; }
+  /* кнопка «Начать» всегда видна, даже если правила прокручиваются */
+  .start-actions {
+    position: sticky;
+    bottom: 0;
+    padding: 4px 0 clamp(14px, 3vw, 24px);
+    background: linear-gradient(to bottom, rgba(42,22,36,0), rgb(42,22,36) 30%);
+  }
+  .panel h3 {
+    margin: 12px 0 4px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .rules {
+    margin: 0;
+    padding-left: 1.2em;
+    text-align: left;
+    color: var(--muted);
+    font-size: clamp(13px, 2.6vw, 15px);
+    line-height: 1.45;
+  }
+  .rules li + li { margin-top: 3px; }
+  .rules b { color: var(--ink); font-weight: 600; }
+  .start-hint { margin-top: 8px !important; }
   .panel h2 {
     margin: 0 0 6px;
     font-family: ui-serif, Georgia, "Times New Roman", serif;
@@ -180,15 +210,28 @@
   <div class="overlay" id="startScreen">
     <div class="panel">
       <h2>Искорка бежит</h2>
-      <p>Перепрыгивайте стопки бумаг и блоки кода, уворачивайтесь от летающих ошибок.</p>
+      <h3>Правила</h3>
+      <ul class="rules">
+        <li>Искорка бежит сама. Ваша задача — пробежать как можно дальше.</li>
+        <li><b>Стопки бумаг и блоки кода</b> стоят на земле — их нужно перепрыгнуть.</li>
+        <li><b>Летающие ошибки</b> появляются после 180 очков. Через низкие прыгайте, под средними пригибайтесь, под высокими можно просто пробежать.</li>
+        <li><b>Батут.</b> Если приземлиться на препятствие сверху, Искорка отскочит и получит <b>+25 очков</b>.</li>
+        <li>Удар сбоку или снизу — игра окончена.</li>
+        <li>Очки идут за пройденное расстояние. Скорость постепенно растёт. Рекорд сохраняется в браузере.</li>
+      </ul>
+      <h3>Управление</h3>
       <div class="keys only-keys">
-        <p><kbd>Пробел</kbd> или <kbd>↑</kbd> — прыжок</p>
-        <p><kbd>↓</kbd> — пригнуться</p>
+        <p><kbd>Пробел</kbd> или <kbd>↑</kbd> — прыжок (дольше держите — выше прыжок)</p>
+        <p><kbd>↓</kbd> — пригнуться, в воздухе — быстро упасть</p>
+        <p><kbd>Esc</kbd> — пауза · <kbd>M</kbd> — звук</p>
       </div>
       <div class="only-touch">
-        <p>Тап по правой половине — прыжок<br>Удержание на левой половине — пригнуться</p>
+        <p>Тап по правой половине — прыжок<br>Удержание на левой половине — пригнуться<br>Свайп вниз — тоже пригнуться</p>
       </div>
-      <button class="btn" id="startBtn" type="button">Начать</button>
+      <div class="start-actions">
+        <button class="btn" id="startBtn" type="button">Начать</button>
+        <p class="only-keys start-hint">или нажмите <kbd>Пробел</kbd></p>
+      </div>
     </div>
   </div>
 
@@ -481,6 +524,7 @@
   stage.addEventListener('pointerdown', (e) => {
     ensureAudio();
     if (e.target.closest('button')) return;
+    if (mode === 'ready' && e.target.closest('#startScreen')) return;  // даём спокойно прочитать правила
     e.preventDefault();
     if (inDuckZone(e)) {
       pointers.set(e.pointerId, { duck: true, startY: e.clientY });
@@ -749,9 +793,9 @@
 
     // скорость растёт со временем
     elapsed += dt;
-    // разгон в 2,5 раза мягче прежнего; потолок держит игру проходимой
+    // очень плавный разгон; потолок держит игру проходимой
     const maxSpeed = 720 * speedFactor();
-    speed = Math.min(maxSpeed, baseSpeed + elapsed * 3.8);
+    speed = Math.min(maxSpeed, baseSpeed + elapsed * 1.27);
 
     dist += speed * dt;
     const newScore = Math.floor(dist / 40);
