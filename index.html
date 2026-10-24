@@ -1312,6 +1312,8 @@
     bridge: ['МОСТ (ПОЧТИ)', 'РЕМОНТ С 2019', 'НА СВОЙ РИСК'],
     rope: ['КАНАТ (НАДЁЖНЫЙ?)', 'ИДТИ МЕДЛЕННО', 'ЦИРК УЕХАЛ, КАНАТ ОСТАЛСЯ'],
     weed: ['ПЕРЕКАТИ-ПОЛЕ (ТАКСИ)', 'МОЖНО ПРОКАТИТЬСЯ'],
+    geyser: ['ГЕЙЗЕР (ПОДБРАСЫВАЕТ)', 'ДУШ ПО РАСПИСАНИЮ', 'ОСТОРОЖНО: МОКРО'],
+    snake: ['ЗМЕЯ (КУСАЕТСЯ)', 'НОРА ЗАНЯТА', 'ССС…'],
     tunnel: ['ТОННЕЛЬ (НАРИСОВАН)', 'СОВСЕМ КАК НАСТОЯЩИЙ', 'КРАСКА ЕЩЁ СОХНЕТ'],
     anvil: ['ТЕНЬ (ПОДОЗРИТЕЛЬНАЯ)', 'ПОГОДА: НАКОВАЛЬНИ', 'ACME, 1 ТОННА'],
     piano: ['ТЕНЬ (МУЗЫКАЛЬНАЯ)', 'ДОСТАВКА ПИАНИНО', 'ДО-МИ-СОЛЬ'],
@@ -1428,6 +1430,12 @@
 
   function hitbox(o) {
     if (o.type === 'error') return { l: o.x - 11, r: o.x + 11, t: o.y - 11, b: o.y + 11 };
+    if (o.type === 'geyser') return { l: -1e5, r: -1e5 + 1, t: 0, b: 1 };   // не бьёт, а подбрасывает
+    if (o.type === 'snake') {
+      if (o.up < 0.35) return { l: -1e5, r: -1e5 + 1, t: 0, b: 1 };          // спряталась — можно пробежать
+      const cx = o.x + o.w / 2;
+      return { l: cx - 9, r: cx + 9, t: o.gy - 5 - 36 * o.up, b: o.gy };
+    }
     if (o.type === 'barrier') return { l: o.x, r: o.x + o.w - 6, t: o.gy - 51, b: o.gy - 39 };   // только стрела
     if (o.type === 'boulder' || o.type === 'weed') return { l: o.x + 4, r: o.x + o.w - 4, t: o.y + 4, b: o.y + o.h - 2 };
     return { l: o.x + 3, r: o.x + o.w - 3, t: o.y + 3, b: o.y + o.h };
@@ -1652,8 +1660,9 @@
       if (width < 0) sinceSpawn = nextGap - 20;   // ждём, пока дорога впереди освободится
       else {
         sinceSpawn = 0;
-        const minGap = speed * 0.72 + width + 70;
-        nextGap = minGap + Math.random() * speed * 0.7;
+        const desert = locAt(W + 30) === 0 && !tut;   // в пустыне препятствия чаще
+        const minGap = speed * (desert ? 0.64 : 0.72) + width + (desert ? 55 : 70);
+        nextGap = minGap + Math.random() * speed * (desert ? 0.45 : 0.7);
       }
     }
 
@@ -1748,6 +1757,7 @@
 
   function bounceOff(o, hb) {
     tutEvent('bounce');
+    if (o.type === 'snake') { o.hurt = true; popups.push({ x: o.x + 20, y: o.gy - 40, t: 0.7, text: 'ой-ссс', size: 14 }); }
     player.bottom = hb.t + 3;
     player.vy = BOUNCE_V;
     player.fastFall = false;
@@ -1775,7 +1785,7 @@
   };
   // как закончился забег — для списка «План» на экране проигрыша
   const PLAN_TEXT = {
-    cactus: 'Уколоться о кактус.', tunnel: 'Врезаться в нарисованный тоннель.', anvil: 'Попасть под наковальню.',
+    cactus: 'Уколоться о кактус.', snake: 'Попасться змее.', tunnel: 'Врезаться в нарисованный тоннель.', anvil: 'Попасть под наковальню.',
     piano: 'Попасть под пианино.', edge: 'Повисеть над обрывом — и вниз.', tnt: 'Подорваться на динамите.',
     manhole: 'Провалиться в люк.', banana: 'Поскользнуться на банановой кожуре.', crater: 'Упасть в кратер.',
     trap: 'Наступить в капкан.', rake: 'Наступить на грабли.', train: 'Не успеть перепрыгнуть поезд.',
@@ -2739,7 +2749,7 @@
     papers: (o) => drawPapers(o), code: (o) => drawCode(o), mug: drawMug, monitor: drawMonitor,
     boxes: drawBoxes, keyboard: drawKeyboard, cactus: drawCactus, cone: drawCone,
     weed: drawWeed, tunnel: drawTunnel, drop: drawDrop, boulder: drawBoulder, tnt: drawTnt, banana: drawBanana,
-    trap: drawTrap, rake: drawRake, barrier: drawBarrier, train: drawTrain,
+    trap: drawTrap, rake: drawRake, barrier: drawBarrier, train: drawTrain, geyser: drawGeyser, snake: drawSnake,
   };
   function drawFlyer(o) {
     if (o.kind === 'bird') drawBirdie(o.x, o.y, 2.6, 1);
@@ -3134,6 +3144,7 @@
     // параллакс своей локации; у границы — две сцены и флажок с номером уровня
     const segs = segments();
     for (const sg of segs) inSeg(sg, () => drawScenery(sg.loc, t));
+    for (const sg of segs) if (sg.loc === 0) inSeg(sg, () => drawHeat(t, sg));
 
     drawGround();
     for (const sg of segs) inSeg(sg, () => drawGroundDetail(sg.loc));
@@ -3424,7 +3435,7 @@
 
   // ---------- Локации: препятствия и мультяшные реакции ----------
   const LOC_POOL = [
-    [['cactus', 3], ['weed', 2], ['tunnel', 1.5], ['anvil', 1.5]],            // пустыня
+    [['cactus', 3], ['weed', 1.6], ['tunnel', 1.3], ['anvil', 1.3], ['geyser', 1.7], ['snake', 1.9], ['group', 2.2]],   // пустыня
     [['roll', 2], ['hop', 1.6], ['edge', 1.5], ['tnt', 2]],                   // горы
     [['manhole', 2], ['banana', 2], ['piano', 1.6]],                          // город
     [['bat', 2.4], ['crater', 1.5], ['trap', 1.6], ['rake', 1.6]],            // ночь
@@ -3435,6 +3446,7 @@
   const DROP_ALT = 300;      // с какой высоты падают наковальня и пианино
   const TRAIN_V = 190;       // поезд едет навстречу быстрее земли
   let pendingKind = null;    // движущееся препятствие ждёт, пока дорога освободится
+  let lastLocKind = '';      // чтобы одно и то же не шло подряд
 
   function wpick(list) {
     let sum = 0;
@@ -3446,8 +3458,11 @@
 
   // возвращает ширину, -1 (подождать) или null (взять обычное препятствие)
   function spawnLoc(loc, x) {
-    const k = pendingKind || wpick(LOC_POOL[loc]);
+    let k = pendingKind || wpick(LOC_POOL[loc]);
+    if (!pendingKind && k === lastLocKind) k = wpick(LOC_POOL[loc]);   // чередуем разнообразнее
     pendingKind = null;
+    lastLocKind = k;
+    if (k === 'group') return spawnDesertGroup(x);
     // катящееся и едущее не должно наезжать на то, что уже стоит впереди
     if (MOVERS[k] && !obstacles.every((o) => o.x + (o.span || o.w || 30) < player.x - 20)) { pendingKind = k; return -1; }
     const seed = Math.random() * 1000;
@@ -3455,6 +3470,8 @@
     let o = null;
     switch (k) {
       case 'cactus': o = { type: 'cactus', x, w: rand(26, 30), h: rand(40, 54), seed }; break;
+      case 'geyser': o = { type: 'geyser', x, w: 34, h: 8, seed, t: rand(0, 2.4), eh: 0, toss: 0 }; break;
+      case 'snake': o = { type: 'snake', x, w: 26, h: 10, seed, up: 0 }; break;
       case 'weed': o = { type: 'weed', x, w: 38, h: 38, seed, rot: 0, ph: 0, vx: -110 }; break;   // ветер катит его туда же, куда бежит Искорка
       case 'tunnel': o = { type: 'tunnel', x, w: rand(54, 62), h: rand(58, 66), seed }; break;
       case 'anvil': o = { type: 'drop', kind: 'anvil', x, w: 40, h: 26, seed, alt: DROP_ALT, state: 'wait', lead: rand(170, 260) }; break;
@@ -3490,8 +3507,63 @@
     return o.w;
   }
 
+  // группы в пустыне: перепрыгиваются одним прыжком
+  function spawnDesertGroup(x) {
+    const r = Math.random(), put = (o) => { addGround(o); return o; };
+    const cactus = (cx, h) => put({ type: 'cactus', x: cx, w: rand(24, 28), h: h || rand(32, 44), seed: Math.random() * 1000 });
+    let end = x;
+    if (r < 0.4) {
+      // кактусы кучкой
+      const n = speed > baseSpeed * 1.15 ? 3 : 2;
+      for (let i = 0; i < n; i++) { const c = cactus(end, rand(30, 46)); end = c.x + c.w + rand(3, 8); }
+    } else if (r < 0.7) {
+      // змея и кактус рядом
+      const sn = put({ type: 'snake', x, w: 26, h: 10, seed: Math.random() * 1000, up: 0 });
+      const c = cactus(sn.x + sn.w + rand(40, 60));
+      end = c.x + c.w;
+    } else {
+      // гейзер, а за ним кактус: может перебросить, а может и нет
+      const g = put({ type: 'geyser', x, w: 34, h: 8, seed: Math.random() * 1000, t: rand(0, 2.4), eh: 0, toss: 0 });
+      const c = cactus(g.x + g.w + rand(60, 90));
+      end = c.x + c.w;
+    }
+    maybeNote(obstacles[obstacles.length - 1]);
+    return end - x;
+  }
+
   // поведение особых препятствий каждый кадр
   const TICK = {
+    // гейзер: пузырится, потом бьёт столбом воды и подбрасывает Искорку
+    geyser(o, dt) {
+      o.t += dt;
+      const ph = o.t % 2.4, cx = o.x + o.w / 2, vis = cx > -20 && cx < W + 20;
+      o.bub = ph > 0.9 && ph < 1.5;
+      const erupt = ph >= 1.5;
+      if (erupt && !o.wasErupt && vis) geyserSfx();
+      if (o.bub && vis && Math.random() < dt * 6) bubbleSfx();
+      o.wasErupt = erupt;
+      const target = erupt ? 120 * Math.min(1, (ph - 1.5) / 0.15) * (ph > 2.25 ? (2.4 - ph) / 0.15 : 1) : 0;
+      o.eh = target;
+      o.toss = Math.max(0, o.toss - dt);
+      if (o.eh > 25 && !o.toss && mode === 'running' && !hitSeq && Math.abs(player.x - cx) < 24 && player.bottom > o.gy - 6 - o.eh) {
+        o.toss = 1.2;
+        if (player.ride) endRide(false);
+        player.onGround = false; player.vy = -980; player.fastFall = false; player.dbl = false; player.duck = false;
+        player.squash = -0.4; player.squashV = 0;
+        startFlip(0.95);
+        sayText('Уи-и-и!', 2);
+        popups.push({ x: cx + 10, y: o.gy - 60, t: 0.8, text: 'ПШШ!', size: 22 });
+        puffCloud(cx, o.gy - 4, 8, true);
+      }
+    },
+    // змея: выглядывает из норы, а когда Искорка близко — высовывается и шипит
+    snake(o, dt) {
+      const cx = o.x + o.w / 2, d = cx - player.x;
+      const peek = Math.sin(o.t = (o.t || o.seed) + dt * 1.8) > 0.55;
+      const want = o.hurt ? 0 : (d < 190 && d > -40) || peek ? 1 : 0;
+      o.up += clamp(want - o.up, -dt * 6, dt * 9);
+      if (want && !o.hissed && d < 190 && cx < W) { o.hissed = true; hissSfx(); }
+    },
     weed(o, dt) {
       const ridden = player.ride === o;
       if (ridden) o.x = player.x - o.w / 2;
@@ -3584,7 +3656,7 @@
 
   // ---------- Мультяшные реакции на удар ----------
   // Каждая отнимает жизнь, но выглядит по-своему; поза рисуется через player.rsx/rsy/rtilt/rLeg
-  const REACT = { cactus: 'prick', trap: 'prick', tunnel: 'tunnel', drop: 'flat', edge: 'hang', tnt: 'soot', manhole: 'manhole', banana: 'slip', rake: 'rake' };
+  const REACT = { snake: 'prick', cactus: 'prick', trap: 'prick', tunnel: 'tunnel', drop: 'flat', edge: 'hang', tnt: 'soot', manhole: 'manhole', banana: 'slip', rake: 'rake' };
 
   function resetPose() {
     player.rsx = 1; player.rsy = 1; player.rtilt = 0; player.rLeg = 1;
@@ -3663,11 +3735,12 @@
         player.squash = -0.45; player.squashV = 0;
         player.needles = o.type === 'cactus' ? 2.6 : 0;
         hitStop = 0.08;
-        impact = { x: player.x + 18, y: player.bottom - 30, t: 0.08, text: o.type === 'trap' ? 'ЩЁЛК!' : 'КОЛЬ!' };
+        impact = { x: player.x + 18, y: player.bottom - 30, t: 0.08, text: o.type === 'trap' ? 'ЩЁЛК!' : o.type === 'snake' ? 'КУСЬ!' : 'КОЛЬ!' };
+        if (o.type === 'snake') { o.hurt = true; hissSfx(); }   // укусила и спряталась
         kickRays(6, 10);
         if (o.type === 'trap') { o.snap = true; o.hidden = false; snapSfx(); }
         ouchSfx();
-        sayText(o.type === 'trap' ? 'Ай-ай-ай!' : 'Ай!');
+        sayText(o.type === 'trap' ? 'Ай-ай-ай!' : o.type === 'snake' ? 'Ай! Кусается!' : 'Ай!');
         h.speedK = 0.35;
       },
       upd(h, dt, t) {
@@ -3980,6 +4053,14 @@
     noiseHit(t, 'highpass', 3000, 0.8, 0.25, 0.04);
     blip(t, 'square', 900, 300, 0.08, 0.08);
   }
+  function geyserSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    whoosh(t, 400, 2500, 0.9, 0.12);
+    noiseHit(t, 'lowpass', 600, 0.6, 0.15, 0.3);
+  }
+  function bubbleSfx() { if (sfxOk()) { const f = rand(300, 600); blip(audio.currentTime, 'sine', f, f * 1.8, 0.04, 0.06); } }
+  function hissSfx() { if (sfxOk()) noiseHit(audio.currentTime, 'highpass', 4000, 0.7, 0.07, 0.5); }
   // гудок паровоза «ту-ту!»
   function trainWhistleSfx() {
     if (!sfxOk()) return;
@@ -4433,31 +4514,7 @@
     ink(1.5, a);
     ctx.stroke();
   }
-  // столовые горы пустыни
-  function mesaH(wx) {
-    const i = Math.floor(wx / 170), f = wx / 170 - i, r = hash1(i + 300);
-    if (r < 0.35) return 4;
-    const top = 26 + r * 44, a = 0.2 + hash1(i + 500) * 0.12, b = 0.8 - hash1(i + 700) * 0.12;
-    if (f < a - 0.07 || f > b + 0.07) return 4;
-    if (f < a) return 4 + (top - 4) * (f - (a - 0.07)) / 0.07;
-    if (f > b) return 4 + (top - 4) * ((b + 0.07) - f) / 0.07;
-    return top;
-  }
   const duneH = (wx) => (Math.sin(wx * 0.012) * 0.6 + Math.sin(wx * 0.012 * 2.3 + 1.3) * 0.4 + 1) / 2 * 12;
-
-  function drawFarCacti() {
-    const par = 0.3, off = scroll * par, step = 110;
-    ink(1.3, 0.6);
-    ctx.beginPath();
-    for (let i = Math.floor((off - 20) / step); i * step - off < W + 20; i++) {
-      if (hash1(i + 900) < 0.45) continue;
-      const x = i * step - off + hash1(i + 950) * 60, y = GROUND - 16 - duneH(x + off), hh = 14 + hash1(i + 990) * 10;
-      ctx.moveTo(x, y); ctx.lineTo(x, y - hh);
-      ctx.moveTo(x, y - hh * 0.5); ctx.lineTo(x - 5, y - hh * 0.5); ctx.lineTo(x - 5, y - hh * 0.75);
-      ctx.moveTo(x, y - hh * 0.4); ctx.lineTo(x + 4, y - hh * 0.4); ctx.lineTo(x + 4, y - hh * 0.65);
-    }
-    ctx.stroke();
-  }
 
   // снежные шапки на дальних пиках
   function drawSnow(amp, base, freq, par) {
@@ -4553,7 +4610,12 @@
     drawSun(t);
     if (loc === 0) {
       for (const c of cloudsFar) drawCloud(c, 0.35);
+      // столовые горы на трёх планах, дюны с кактусами, марево
+      drawProfile(0.3, 0.025, GROUND - 14, mesaFar);
       drawProfile(0.45, 0.05, GROUND - 14, mesaH);
+      drawStrata(0.3, 0.05, GROUND - 14, mesaH);
+      drawProfile(0.55, 0.12, GROUND - 14, mesaNear);
+      drawStrata(0.35, 0.12, GROUND - 14, mesaNear);
       drawProfile(0.5, 0.3, GROUND - 16, duneH);
       drawFarCacti();
     } else if (loc === 1) {
@@ -4580,7 +4642,8 @@
 
   // детали поверхности: разметка в городе, рельсы на железной дороге
   function drawGroundDetail(loc) {
-    if (loc === 2) {
+    if (loc === 0) drawDesertProps();
+    else if (loc === 2) {
       ink(1.2, 0.5);
       ctx.setLineDash([12, 12]);
       ctx.lineDashOffset = scroll % 24;
@@ -4633,6 +4696,267 @@
     ctx.beginPath(); ctx.moveTo(x, gy - 64); ctx.quadraticCurveTo(x + 14, gy - 60 + fl, x + 26, gy - 56); ctx.quadraticCurveTo(x + 14, gy - 50 - fl, x, gy - 46);
     paper(); ctx.stroke();
     write(String(sg.L), x + 10, gy - 55, 11, 'center', 1, 'middle');
+  }
+
+  // ---------- Пустыня: декорации ----------
+  // столовая гора: плоская вершина, крутые склоны; per — шаг, so — «семя», gap — доля пустых мест
+  function mesa(wx, per, so, hmin, hr, gap) {
+    const i = Math.floor(wx / per), f = wx / per - i, r = hash1(i + so);
+    if (r < gap) return 4;
+    const top = hmin + (r - gap) / (1 - gap) * hr, a = 0.2 + hash1(i + so + 200) * 0.12, b = 0.8 - hash1(i + so + 400) * 0.12;
+    const sl = 0.07;
+    if (f < a - sl || f > b + sl) return 4;
+    if (f < a) return 4 + (top - 4) * (f - (a - sl)) / sl;
+    if (f > b) return 4 + (top - 4) * ((b + sl) - f) / sl;
+    return top;
+  }
+  const mesaH = (wx) => mesa(wx, 170, 300, 26, 44, 0.35);
+  const mesaFar = (wx) => mesa(wx, 240, 1000, 54, 42, 0.3);
+  const mesaNear = (wx) => mesa(wx, 130, 2000, 14, 24, 0.5);
+  // слои породы на склонах — пунктир поперёк горы
+  function drawStrata(a, par, base, hfn) {
+    const off = scroll * par;
+    ink(1, a);
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    for (const k of [0.35, 0.62]) {
+      let on = false;
+      for (let x = -10; x <= W + 10; x += 6) {
+        const h = hfn(x + off);
+        if (h > 14) {
+          const y = base - h * k;
+          if (!on) { ctx.moveTo(x, y); on = true; } else ctx.lineTo(x, y);
+        } else on = false;
+      }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // кактусы разной формы на дюнах
+  function drawFarCacti() {
+    const par = 0.3, off = scroll * par, step = 70;
+    ink(1.3, 0.6);
+    ctx.beginPath();
+    for (let i = Math.floor((off - 30) / step); i * step - off < W + 30; i++) {
+      if (hash1(i + 900) < 0.4) continue;
+      const x = i * step - off + hash1(i + 950) * 40, y = GROUND - 16 - duneH(x + off), hh = 10 + hash1(i + 990) * 14;
+      const kind = Math.floor(hash1(i + 1010) * 4);
+      if (kind === 0) {          // сагуаро с ручками
+        ctx.moveTo(x, y); ctx.lineTo(x, y - hh);
+        ctx.moveTo(x, y - hh * 0.5); ctx.lineTo(x - 5, y - hh * 0.5); ctx.lineTo(x - 5, y - hh * 0.78);
+        ctx.moveTo(x, y - hh * 0.4); ctx.lineTo(x + 4, y - hh * 0.4); ctx.lineTo(x + 4, y - hh * 0.66);
+      } else if (kind === 1) {   // круглый кактус-бочонок
+        const r = 3 + hh * 0.12;
+        ctx.moveTo(x + r, y - r); ctx.ellipse(x, y - r, r, r, 0, 0, Math.PI * 2);
+        ctx.moveTo(x, y - r * 2); ctx.lineTo(x, y - r * 2 - 2);
+      } else if (kind === 2) {   // опунция — лепёшки
+        const r = 2.5 + hh * 0.1;
+        ctx.moveTo(x + r, y - r * 1.4); ctx.ellipse(x, y - r * 1.4, r, r * 1.4, 0, 0, Math.PI * 2);
+        ctx.moveTo(x - r * 0.4 + r, y - r * 3.4); ctx.ellipse(x - r * 0.4, y - r * 3.4, r * 0.8, r * 1.1, -0.4, 0, Math.PI * 2);
+        ctx.moveTo(x + r * 1.3 + r * 0.7, y - r * 3); ctx.ellipse(x + r * 1.3, y - r * 3, r * 0.7, r, 0.5, 0, Math.PI * 2);
+      } else {                   // органный кактус — пучок стволов
+        for (let s = -1; s <= 1; s++) { ctx.moveTo(x + s * 3, y); ctx.lineTo(x + s * 3, y - hh * (s ? 0.75 : 1)); }
+      }
+    }
+    ctx.stroke();
+  }
+
+  const heatBuf = document.createElement('canvas'), heatCtx = heatBuf.getContext('2d');
+  // если с маревом кадры проседают — оставляем только нарисованные струйки
+  const heat = { on: true, used: false, slowT: 0, ema: 1 / 60 };
+  function watchHeat(real) {
+    if (!heat.on) return;
+    heat.ema += (real - heat.ema) * 0.1;
+    if (heat.used && heat.ema > 1 / 45) { heat.slowT += real; if (heat.slowT > 1.5) heat.on = false; }
+    else heat.slowT = 0;
+    heat.used = false;
+  }
+  // дрожащий от жары воздух над горизонтом: строки картинки чуть сдвигаются туда-сюда
+  function drawHeat(t, sg) {
+    const k = scale * dpr, y0 = OFF + GROUND - 78, y1 = OFF + GROUND - 10, step = 3;
+    const xa = Math.max(0, Math.floor(sg.a * k)), xb = Math.min(canvas.width, Math.ceil(sg.b * k));
+    if (xb - xa > 4 && heat.on) {
+      heat.used = true;
+      // полосу копируем один раз во вспомогательный холст, оттуда — строками со сдвигом
+      const sy0 = Math.round(y0 * k), bh = Math.ceil((y1 - y0) * k);
+      if (heatBuf.width !== canvas.width || heatBuf.height !== bh) { heatBuf.width = canvas.width; heatBuf.height = bh; }
+      heatCtx.clearRect(0, 0, heatBuf.width, bh);
+      heatCtx.drawImage(canvas, xa, sy0, xb - xa, bh, xa, 0, xb - xa, bh);
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      for (let y = y0; y < y1; y += step) {
+        const amp = Math.sin((y - y0) / (y1 - y0) * Math.PI) * 1.3;
+        const dx = Math.sin(y * 0.8 + t * 6.5) * amp * k;
+        const sy = Math.round(y * k) - sy0, sh = Math.ceil(step * k);
+        ctx.drawImage(heatBuf, xa, sy, xb - xa, sh, xa + dx, sy + sy0, xb - xa, sh);
+      }
+      ctx.restore();
+    }
+    // и нарисованные волнистые струйки марева
+    ink(1, 0.22 + 0.12 * Math.sin(t * 3));
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const bx = ((i * 157 + t * 14) % (W + 120)) - 60, by = GROUND - 26 - (i % 3) * 13;
+      for (let s = 0; s <= 24; s += 3) {
+        const yy = by + Math.sin(s * 0.5 + t * 5 + i) * 1.6;
+        if (s === 0) ctx.moveTo(bx + s, yy); else ctx.lineTo(bx + s, yy);
+      }
+    }
+    ctx.stroke();
+  }
+
+  // мелочи на земле: черепа, указатели, сухое дерево с грифом, камни
+  const SIGNS = ['ВОДЫ НЕТ', 'ОАЗИС → 500 км', 'ACME → 12 км', 'ДОЖДЬ НЕ ЖДАТЬ', 'ТУДА →', 'КОЙОТ ЗДЕСЬ БЫЛ'];
+  function drawSkull(x, y) {
+    ink(1.3, 0.75);
+    ctx.beginPath();
+    ctx.moveTo(x - 6, y - 5); ctx.quadraticCurveTo(x - 13, y - 9, x - 15, y - 15);   // рога
+    ctx.moveTo(x + 6, y - 5); ctx.quadraticCurveTo(x + 13, y - 9, x + 15, y - 15);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - 7, y - 8); ctx.quadraticCurveTo(x, y - 12, x + 7, y - 8);
+    ctx.lineTo(x + 4, y); ctx.lineTo(x - 4, y); ctx.closePath();
+    paper(); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.beginPath(); ctx.arc(x - 3, y - 6.5, 1.4, 0, Math.PI * 2); ctx.arc(x + 3, y - 6.5, 1.4, 0, Math.PI * 2); ctx.fill();
+  }
+  function drawSignpost(x, y, text) {
+    ink(1.4, 0.7);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 1, y - 30); ctx.stroke();
+    ctx.font = '9px ' + FONT;
+    const tw = ctx.measureText(text).width;
+    ctx.save();
+    ctx.translate(x, y - 32);
+    ctx.rotate(-0.06);
+    sPoly([[-4, -8], [tw + 4, -8], [tw + 9, -2], [tw + 4, 4], [-4, 4]], true);
+    paper(); ctx.stroke();
+    write(text, 0, -2, 9, 'left', 0.85, 'middle');
+    ctx.restore();
+  }
+  // сухое дерево; на ветке сидит гриф, кивает и косится на Искорку
+  function drawVultureTree(x, y, seed) {
+    ink(1.6, 0.75);
+    ctx.beginPath();
+    ctx.moveTo(x, y); ctx.lineTo(x + 2, y - 46);
+    ctx.moveTo(x + 1, y - 30); ctx.quadraticCurveTo(x + 12, y - 36, x + 22, y - 38);   // ветка с грифом
+    ctx.moveTo(x + 1.5, y - 38); ctx.quadraticCurveTo(x - 8, y - 44, x - 14, y - 52);
+    ctx.moveTo(x - 8, y - 45); ctx.lineTo(x - 6, y - 52);
+    ctx.stroke();
+    const bx = x + 17, by = y - 38;
+    const bob = Math.sin(T * 2 + seed) * 1.2;
+    const look = player.x > bx ? 1 : -1;
+    ink(1.3, 0.8);
+    ctx.beginPath(); ctx.ellipse(bx, by - 7, 6, 8, 0.2, 0, Math.PI * 2); paper(); ctx.stroke();       // тело
+    ctx.beginPath(); ctx.moveTo(bx - 4, by - 12); ctx.quadraticCurveTo(bx - 9, by - 4, bx - 4, by - 1); ctx.stroke(); // крыло
+    ctx.beginPath(); ctx.moveTo(bx + 2, by - 13); ctx.quadraticCurveTo(bx + 4 * look, by - 19 + bob, bx + 5 * look, by - 20 + bob); ctx.stroke(); // шея
+    ctx.beginPath(); ctx.arc(bx + 5 * look, by - 21 + bob, 2.8, 0, Math.PI * 2); paper(); ctx.stroke();       // лысая голова
+    ctx.beginPath(); ctx.moveTo(bx + 7.5 * look, by - 22 + bob); ctx.lineTo(bx + 11 * look, by - 20 + bob); ctx.lineTo(bx + 7.5 * look, by - 19.5 + bob); ctx.stroke(); // клюв
+    ctx.beginPath(); ctx.moveTo(bx - 1, by - 15); ctx.lineTo(bx + 4, by - 14.5); ctx.stroke();               // «воротник»
+    if (Math.sin(T * 0.7 + seed * 3) < 0.97) { ctx.fillStyle = C.line; ctx.beginPath(); ctx.arc(bx + 6 * look, by - 22 + bob, 0.7, 0, Math.PI * 2); ctx.fill(); }
+    ctx.beginPath(); ctx.moveTo(bx - 1, by); ctx.lineTo(bx - 1, by + 1); ctx.moveTo(bx + 2, by); ctx.lineTo(bx + 2, by + 1); ctx.stroke(); // лапки
+  }
+  function drawDesertProps() {
+    const step = 150;
+    ctx.save();
+    ctx.globalAlpha = 0.7;   // декор бледнее препятствий, чтобы не путать
+    for (let i = Math.floor((scroll - 60) / step); i * step - scroll < W + 60; i++) {
+      const r = hash1(i + 3000);
+      if (r < 0.32) continue;
+      const x = i * step - scroll + hash1(i + 3100) * 70;
+      // рядом с препятствием декор не ставим
+      if (obstacles.some((o) => o.type !== 'error' && x > o.x - 45 && x < o.x + (o.span || o.w) + 45)) continue;
+      const y = groundY(x) - 1;
+      if (r < 0.52) drawSkull(x, y);
+      else if (r < 0.68) drawSignpost(x, y, SIGNS[Math.floor(hash1(i + 3200) * SIGNS.length)]);
+      else if (r < 0.8) drawVultureTree(x, y, i);
+      else {
+        ink(1.2, 0.6);
+        ctx.beginPath(); ctx.ellipse(x, y - 3, 6, 3.5, 0, Math.PI, 0); ctx.ellipse(x + 8, y - 2, 4, 2.5, 0, Math.PI, 0); paper(); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  // ---------- Пустыня: гейзер и змея ----------
+  function drawGeyser(o) {
+    const cx = o.x + o.w / 2, gy = o.gy;
+    // столб воды
+    if (o.eh > 2) {
+      const h = o.eh, top = gy - 6 - h;
+      ctx.beginPath();
+      ctx.moveTo(cx - 6, gy - 6);
+      for (let y = gy - 6; y >= top; y -= 6) ctx.lineTo(cx - 6 - Math.sin(y * 0.3 + T * 18) * 2, y);
+      for (let y = top; y <= gy - 6; y += 6) ctx.lineTo(cx + 6 + Math.sin(y * 0.3 + T * 18 + 1) * 2, y);
+      ctx.closePath();
+      ink(1.5); paper(); ctx.stroke();
+      ink(1, 0.6);
+      ctx.beginPath();
+      for (let y = gy - 14; y > top + 6; y -= 11) { ctx.moveTo(cx - 2, y); ctx.lineTo(cx + 1, y - 5); }
+      ctx.stroke();
+      // шапка из брызг
+      ink(1.3);
+      for (let i = 0; i < 7; i++) {
+        const a = -Math.PI / 2 + (i - 3) * 0.45 + Math.sin(T * 9 + i) * 0.1;
+        const rr = 8 + (i % 2) * 5;
+        ctx.beginPath(); ctx.arc(cx + Math.cos(a) * rr, top + 4 + Math.sin(a) * rr * 0.7, 2.6, 0, Math.PI * 2); paper(); ctx.stroke();
+      }
+    }
+    // пузыри перед извержением
+    if (o.bub) {
+      ink(1, 0.85);
+      for (let i = 0; i < 3; i++) {
+        const k = (T * 2.5 + i / 3) % 1;
+        ctx.beginPath(); ctx.arc(cx - 6 + i * 6, gy - 8 - k * 16, 1.6 + k * 1.4, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    // каменный конус с трещиной
+    ink(1.6);
+    sPoly([[o.x, gy], [cx - 7, gy - 8], [cx + 7, gy - 8], [o.x + o.w, gy]], true);
+    paper(); ctx.stroke();
+    ink(1, 0.6);
+    ctx.beginPath(); ctx.moveTo(cx - 3, gy - 5); ctx.lineTo(cx - 6, gy - 1); ctx.moveTo(cx + 9, gy - 3); ctx.lineTo(cx + 12, gy - 1); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, gy - 8, 7, 1.8, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(16,24,66,0.9)'; ctx.fill(); ink(1.2); ctx.stroke();
+  }
+
+  function drawSnake(o) {
+    const cx = o.x + o.w / 2, gy = o.gy, up = o.up || 0;
+    // нора-холмик
+    ink(1.5);
+    ctx.beginPath(); ctx.moveTo(o.x - 4, gy); ctx.quadraticCurveTo(cx, gy - 12, o.x + o.w + 4, gy); paper(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, gy - 5, 7, 3, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(16,24,66,0.92)'; ctx.fill(); ink(1.2); ctx.stroke();
+    if (up < 0.05) {
+      // из норы блестят глазки
+      if (Math.sin(T * 1.3 + o.seed) > -0.6) { ctx.fillStyle = C.line; ctx.beginPath(); ctx.arc(cx - 2, gy - 5, 0.8, 0, Math.PI * 2); ctx.arc(cx + 2, gy - 5, 0.8, 0, Math.PI * 2); ctx.fill(); }
+      return;
+    }
+    const h = 36 * up, sw = Math.sin(T * 5 + o.seed) * 3 * up;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(o.x - 30, gy - 80, o.w + 60, 75); ctx.clip();   // ниже края норы змеи не видно
+    // тело — S-образная лента
+    const pts = [];
+    for (let k = 0; k <= 8; k++) { const u = k / 8; pts.push([cx + Math.sin(u * 5 + T * 4) * 4 * u + sw * u, gy - 5 - h * u]); }
+    ink(7.5);
+    ctx.lineCap = 'round';
+    ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    ctx.strokeStyle = C.bg; ctx.lineWidth = 4.5;
+    ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    ink(0.9, 0.7);
+    ctx.beginPath(); for (let k = 1; k < 8; k++) { const [x, y] = pts[k]; ctx.moveTo(x - 1.5, y); ctx.lineTo(x + 1.5, y - 1.5); } ctx.stroke();
+    ctx.restore();
+    // голова смотрит на Искорку
+    const [hx, hy] = pts[8];
+    ink(1.4);
+    ctx.beginPath(); ctx.ellipse(hx - 2, hy - 2, 6, 4.2, -0.15, 0, Math.PI * 2); paper(); ctx.stroke();
+    ctx.fillStyle = C.line;
+    ctx.beginPath(); ctx.arc(hx - 4, hy - 4, 1.4, 0, Math.PI * 2); ctx.arc(hx, hy - 4.3, 1.4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = C.ink;
+    ctx.beginPath(); ctx.arc(hx - 4.4, hy - 4, 0.6, 0, Math.PI * 2); ctx.arc(hx - 0.4, hy - 4.3, 0.6, 0, Math.PI * 2); ctx.fill();
+    if (Math.sin(T * 12) > 0) {   // раздвоенный язык
+      ink(1, 0.9);
+      ctx.beginPath(); ctx.moveTo(hx - 8, hy - 1); ctx.lineTo(hx - 13, hy - 1); ctx.lineTo(hx - 15, hy - 3); ctx.moveTo(hx - 13, hy - 1); ctx.lineTo(hx - 15, hy + 1); ctx.stroke();
+    }
+    if (up > 0.9) write('ссс', hx + 8, hy - 10, 11, 'left', 0.8);
   }
 
   // ---------- Ночь: темнота и фонарик ----------
@@ -5974,6 +6298,7 @@
   function frame(now) {
     const real = Math.min(0.033, (now - last) / 1000);
     last = now;
+    watchHeat(real);
     let dt = real;
     if (hitStop > 0) { hitStop -= real; dt = 0; }   // ударный кадр: всё замирает
     if (impact) { impact.t -= real; if (impact.t <= 0) impact = null; }
