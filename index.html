@@ -913,7 +913,7 @@
   function ropeY(o, sx) {
     const u = clamp((sx - o.x) / o.w, 0, 1);
     const y0 = groundY(o.x), y1 = groundY(o.x + o.w);
-    let y = y0 + (y1 - y0) * u - 1 + 4 * Math.sin(Math.PI * u);
+    let y = y0 + (y1 - y0) * u - 1 + 6 * Math.sin(Math.PI * u);   // длинный канат провисает чуть сильнее
     if (player.onRope === o) {
       const d = (sx - player.x) / 16;
       y += 6 * Math.sqrt(Math.sin(Math.PI * clamp((player.x - o.x) / o.w, 0, 1))) * Math.exp(-d * d);
@@ -959,7 +959,7 @@
     if (type === 'gap') {
       // провал в земле: обрыв, речка или сломанный мост
       const kind = pick(['cliff', 'river', 'bridge', 'rope']);
-      const w = kind === 'cliff' ? rand(50, 76) : kind === 'river' ? rand(58, 84) : kind === 'bridge' ? rand(66, 90) : rand(120, 160);
+      const w = kind === 'cliff' ? rand(50, 76) : kind === 'river' ? rand(58, 84) : kind === 'bridge' ? rand(66, 90) : rand(240, 320);
       const o = { type: 'gap', kind, x, w, h: 0, seed: Math.random() * 1000 };
       o.gy = groundY(x + w / 2); o.y = o.gy;
       obstacles.push(o);
