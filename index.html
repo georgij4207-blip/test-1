@@ -223,6 +223,7 @@
         <li><b>Офисный хлам на земле</b> — стопки бумаг, блоки кода, кружки, мониторы, коробки, клавиатуры, кактусы и конусы — нужно перепрыгнуть.</li>
         <li><b>Летающие помехи</b> — ошибки, жуки-баги, бумажные самолётики и часы-дедлайны — появляются после 180 очков. Через низкие прыгайте, под средними пригибайтесь, под высокими можно просто пробежать.</li>
         <li><b>Обрывы, речки и сломанные мосты</b> — провалы в земле: их нужно перепрыгнуть, и Искорка пролетит над ними сальто — вперёд или назад, как получится. Не прыгнули — споткнётесь на краю.</li>
+        <li><b>Ластик</b> гонится сзади и стирает всё за собой. Иногда он запускает дурацкие изобретения — обычно они бьют по нему же. С каждой потерянной жизнью он ближе; на последней — догонит и сотрёт.</li>
         <li><b>Канат над провалом.</b> Прыгать не нужно: Искорка сама медленно пройдёт по канату, балансируя.</li>
         <li><b>Батут.</b> Если приземлиться на препятствие сверху, Искорка отскочит и получит <b>+25 очков</b>.</li>
         <li><b>Три запасные жизни.</b> Удар сбоку или снизу отнимает одну: Искорка отлетает, сидит оглушённая, встряхивается и бежит дальше. Когда запасные жизни кончатся, следующий удар заканчивает игру.</li>
@@ -251,7 +252,7 @@
         <li>Бежать.</li>
         <li>Прыгать через всё подряд.</li>
         <li id="planHit">Врезаться в препятствие.</li>
-        <li>Бум!</li>
+        <li>Попасться Ластику. Стёрта!</li>
       </ol>
       <p class="big">Счёт: <b id="finalScore">0</b></p>
       <p id="recordLine">Рекорд: <b id="finalHi">0</b></p>
@@ -295,7 +296,7 @@
   const GRAVITY = 2300;
   const JUMP_V = -760;
   const JUMP_CUT = -320;
-  const PLAYER_X = 70;
+  const PLAYER_X = 165;      // правее, чтобы сзади хватало места Ластику
   const PS = 1.5;           // масштаб персонажа: рисунок и зона столкновения
 
   // ---------- Рельеф: бесконечные плавные холмы ----------
@@ -442,6 +443,7 @@
     lastVy = 0; lastAir = false;
     popups = [];
     noteNo = 0;
+    resetEraser();
   }
 
   function makeCloud(far, x) {
@@ -1075,6 +1077,7 @@
     }
 
     if (mode !== 'paused') {
+      updateEraser(dt, s);
       speech.t = Math.max(0, speech.t - dt);
       for (let i = popups.length - 1; i >= 0; i--) {
         popups[i].t -= dt;
@@ -1140,7 +1143,8 @@
         const k = 1 - player.launch / LAUNCH;
         moveSpeed *= k * k * (3 - 2 * k);
       }
-      if (player.x < PLAYER_X) {
+      if (eraser.pulling) player.x = Math.max(PLAYER_X - 32, player.x - 34 * dt);   // магнит Ластика тянет назад
+      else if (player.x < PLAYER_X) {
         player.x = Math.min(PLAYER_X, player.x + (PLAYER_X - player.x) * dt * 5 + dt * 10);   // догоняет своё место
       }
     }
@@ -1311,6 +1315,8 @@
     bonkSfx();
     say('hit', 3, 1, 0);
     if (!last) popups.push({ x: player.x + 28, y: player.bottom - 72, t: 0.9, text: '−1 ♥' });
+    if (eraser.gadget) endGadget();
+    if (!last) eraserSay('near', 0.5);
   }
 
   function updateHit(dt) {
@@ -1322,6 +1328,8 @@
       player.tilt = -0.32 * Math.sin(Math.PI * k);   // заваливается назад, ножки вперёд
       return;
     }
+    // последняя жизнь: вместо оглушения Ластик догоняет и стирает
+    if (h.last) { updateCatch(h, t); return; }
     // 2. сидит оглушённая; на последней жизни после этого — «Игра окончена»
     if (t < HIT.stun) {
       h.tweet = (h.tweet ?? 0.1) - dt;
@@ -1670,15 +1678,17 @@
   }
 
   function drawPlayer() {
+    if (player.erased) return;   // стёрта Ластиком
     const dead = mode === 'over';
+    const caught = !!hitSeq && hitSeq.last && hitSeq.t >= HIT.knock;   // сидит и ждёт Ластика
     const airborne = !player.onGround;
     const ducking = player.duck && player.onGround;
-    const stunned = !!hitSeq && hitSeq.t >= HIT.knock && hitSeq.t < HIT.stun;   // сидит оглушённая
-    const shaking = !!hitSeq && hitSeq.t >= HIT.stun;
+    const stunned = !!hitSeq && !hitSeq.last && hitSeq.t >= HIT.knock && hitSeq.t < HIT.stun;   // сидит оглушённая
+    const shaking = !!hitSeq && !hitSeq.last && hitSeq.t >= HIT.stun;
     const moving = ((mode === 'running' && !airborne) || mode === 'ready') && !hitSeq;
 
     const knocked = !!hitSeq && hitSeq.t < HIT.knock;   // летит назад
-    const sitting = (stunned && !airborne) || dead;
+    const sitting = ((stunned || caught) && !airborne) || dead;
     // подъём: 0 — сидит, 1 — стоит; с лёгким упругим перелётом в конце
     let rise = 1;
     if (shaking) {
@@ -1821,6 +1831,7 @@
     if (player.blinkT > 0) ry = 0.6;
     if (ducking) ry *= 0.65;
     if (airborne && player.blinkT <= 0) ry = 3.8;
+    if (caught) ry = 4.2;   // глаза круглые от ужаса
     const dizzy = dead || stunned;
     const eyeMode = stunned ? 'spiral' : dead ? 'rolled' : '';
     if (dizzy) drawDizzy(x, cy - R * 1.3, false);   // задняя половина хоровода — за головой
@@ -2592,6 +2603,13 @@
 
     ctx.restore();
 
+    // Ластик и стёртая за ним полоса — поверх мира, под рамкой и счётом
+    drawErased();
+    ctx.save();
+    ctx.translate(0, OFF);
+    drawEraser();
+    ctx.restore();
+
     // рамка листа, заголовок и счёт
     ink(1.3, 0.8);
     sRect(6, 6, W - 12, VH - 12);
@@ -2604,6 +2622,495 @@
     if (showScore) write('СЧЁТ ' + pad(score || 0), W - 18, 30, 19, 'right', 1);
     write('РЕКОРД ' + pad(hi), W - 18, 46, 14, 'right', 0.7);
   }
+
+  // ---------- Преследователь: Ластик ----------
+  // Гонится сзади и стирает всё за собой. Чем меньше у Искорки жизней, тем он ближе.
+  const EW = 38, EH = 26, ES = 1.25, ELEG = 7;          // размеры Ластика (до масштаба ES)
+  const ERASER_DIST = [40, 64, 90, 116];               // дистанция до Искорки по числу запасных жизней
+  const ERASER_LINES = {
+    plan: ['Хе-хе-хе…', 'Сейчас как…', 'Гениально!', 'Изобретение №42!', 'План надёжный!'],
+    fail: ['Ой.', 'Опять?!', 'Не тот провод…', 'Ай-ай-ай!', 'Так и задумано…'],
+    win: ['Ага!', 'Почти!', 'Ну погоди!'],
+    near: ['Ближе, ближе…', 'Хе-хе!', 'Я иду-у-у!'],
+    catch: ['Попалась!', 'Хе-хе, стёрто!'],
+  };
+  const eraser = {
+    x: -80, dist: 210, off: 0, offTarget: 0, offRate: 0.8, step: 0, gadget: null, nextGadget: 9,
+    forceX: null, squash: 0, pulling: false, sayText: '', sayT: 0, fx: [],
+  };
+  let crumbs = [];
+
+  function resetEraser() {
+    Object.assign(eraser, {
+      dist: 210, off: 0, offTarget: 0, offRate: 0.8, gadget: null, nextGadget: rand(7, 11),
+      forceX: null, squash: 0, pulling: false, sayT: 0, fx: [],
+    });
+    crumbs = [];
+    player.erased = false;
+  }
+
+  function eraserSay(kind, chance = 1) {
+    if (Math.random() > chance) return;
+    eraser.sayText = pick(ERASER_LINES[kind]);
+    eraser.sayT = 1.4;
+    popSfx();
+  }
+
+  const eraserHalf = () => EW * ES / 2;
+
+  function updateEraser(dt, worldSpeed) {
+    const target = ERASER_DIST[clamp(lives, 0, 3)];
+    const approaching = Math.abs(target - eraser.dist) > 2;
+    eraser.dist += (target - eraser.dist) * Math.min(1, dt * 0.9);
+    eraser.off += (eraser.offTarget - eraser.off) * Math.min(1, dt * eraser.offRate);
+    if (eraser.forceX === null) eraser.x = player.x - eraser.dist - eraser.off;
+    eraser.step += dt * (worldSpeed > 1 ? Math.min(worldSpeed / 16, 40) : approaching || mode === 'ready' ? 12 : 0);
+    eraser.sayT = Math.max(0, eraser.sayT - dt);
+    eraser.squash = Math.max(0, eraser.squash - dt * 0.9);
+    for (let i = eraser.fx.length - 1; i >= 0; i--) {
+      const f = eraser.fx[i];
+      f.t -= dt;
+      f.x -= worldSpeed * dt;
+      if (f.t <= 0) eraser.fx.splice(i, 1);
+    }
+
+    // катышки сыплются с ластика и остаются лежать там, где была земля
+    const rubbing = !!(hitSeq && hitSeq.last && hitSeq.t >= HIT.knock);
+    const rate = worldSpeed / 300 * 22 + (rubbing ? 40 : 0);
+    if (eraser.x > -40 && Math.random() < rate * dt && crumbs.length < 140) {
+      const cx = eraser.x - eraserHalf() + rand(-2, 6);
+      crumbs.push({
+        x: cx, y: groundY(cx) + OFF - rand(8, 34), vy: rand(-40, 10),
+        rest: groundY(cx) + OFF + rand(-4, 20), rot: rand(0, 6.28), s: rand(0.7, 1.3),
+      });
+    }
+    for (let i = crumbs.length - 1; i >= 0; i--) {
+      const c = crumbs[i];
+      c.x -= worldSpeed * dt;
+      if (c.y < c.rest) { c.vy += 420 * dt; c.y = Math.min(c.rest, c.y + c.vy * dt); }
+      if (c.x < 0) crumbs.splice(i, 1);
+    }
+
+    // дурацкие изобретения
+    if (mode === 'running' && !hitSeq) {
+      if (!eraser.gadget && !(player.spin > 0)) {
+        eraser.nextGadget -= dt;
+        if (eraser.nextGadget <= 0) startGadget();
+      }
+      if (eraser.gadget) updateGadget(dt);
+    }
+  }
+
+  function startGadget() {
+    eraser.gadget = { type: pick(['rocket', 'magnet', 'glove']), t: 0, ok: Math.random() < 0.35 };
+    eraserSay('plan');
+  }
+
+  function endGadget() {
+    eraser.gadget = null;
+    eraser.offTarget = 0;
+    eraser.offRate = 0.7;
+    eraser.pulling = false;
+    eraser.nextGadget = rand(8, 14);
+  }
+
+  // бабах в мире: облачко с надписью, едет вместе с землёй
+  function eraserFx(text, x, y, size = 22) { eraser.fx.push({ text, x, y, t: 0.8, size }); }
+
+  function updateGadget(dt) {
+    const g = eraser.gadget;
+    g.t += dt;
+    const t = g.t;
+    if (g.type === 'rocket') {
+      if (!g.lit) { g.lit = true; fuseSfx(); }
+      if (t >= 0.6 && !g.go) { g.go = true; if (sfxOk()) whoosh(audio.currentTime, 400, 2600, 0.5, 0.12); }
+      if (g.ok) {
+        // сработала: подлетает ближе, потом ракета глохнет
+        if (t >= 0.6) { eraser.offTarget = -42; eraser.offRate = 3; }
+        if (t >= 1.7) { eraserSay('win'); endGadget(); }
+      } else if (t >= 1.2 && !g.boom) {
+        // взлетает задом наперёд и взрывается
+        g.boom = true;
+        boomSfx();
+        eraserFx('БУМ!', eraser.x + 18, groundY(eraser.x) + OFF - 115, 26);
+        eraser.off = 150; eraser.offTarget = 150; eraser.offRate = 1;
+        eraserSay('fail');
+      }
+      if (g.boom && t >= 2.0) endGadget();
+    } else if (g.type === 'magnet') {
+      if (t >= 0.4 && !g.hum) { g.hum = true; humSfx(); }
+      if (g.ok) {
+        // тянет Искорку назад
+        eraser.pulling = t >= 0.4 && t < 1.6;
+        eraser.offTarget = t >= 0.4 ? -18 : 0;
+        if (t >= 1.8) { eraserSay('win'); endGadget(); }
+      } else {
+        // притянул наковальню себе на голову
+        if (t >= 0.75 && !g.whistle) { g.whistle = true; anvilWhistleSfx(); }
+        if (t >= 1.15 && !g.clang) {
+          g.clang = true;
+          clangSfx();
+          eraser.squash = 1;
+          eraser.off = 40; eraser.offTarget = 40;
+          eraserSay('fail');
+        }
+        if (t >= 2.0) endGadget();
+      }
+    } else {   // пружинная перчатка
+      if (t >= 0.4 && !g.sprung) { g.sprung = true; boingSound(); }
+      if (g.ok) {
+        if (t >= 1.6) { eraserSay('win', 0.6); endGadget(); }
+      } else if (t >= 0.72 && !g.punched) {
+        // перчатка описала дугу и врезала ему же
+        g.punched = true;
+        punchSfx();
+        eraserFx('БАЦ!', eraser.x - 10, groundY(eraser.x) + OFF - 60, 24);
+        eraser.off = 110; eraser.offTarget = 110; eraser.offRate = 1;
+        eraserSay('fail');
+      }
+      if (g.punched && t >= 1.1) endGadget();
+    }
+  }
+
+  // финал на последней жизни: Ластик подбегает и стирает Искорку
+  function updateCatch(h, t) {
+    if (!h.catchFrom) {
+      h.catchFrom = eraser.x;
+      eraserSay('catch');
+      eraser.gadget = null;
+    }
+    // сначала Искорка сидит в ужасе, Ластик подбегает, потом трёт её туда-сюда
+    const k = clamp((t - HIT.knock - 0.35) / 1.0, 0, 1);
+    const e = k * k * (3 - 2 * k);
+    eraser.forceX = h.catchFrom + (player.x + 62 - h.catchFrom) * e + (k > 0.25 && k < 1 ? Math.sin(t * 34) * 5 : 0);
+    eraser.x = eraser.forceX;
+    eraser.step += 0.4;
+    h.rub = (h.rub ?? 0) - 1 / 60;
+    if (k > 0.2 && k < 1 && h.rub <= 0) { rubSfx(); h.rub = 0.11; }
+    if (t >= HIT.knock + 1.85) {
+      hitSeq = null;
+      player.erased = true;
+      gameOver(h.o, true);
+    }
+  }
+
+  // ---------- Ластик: отрисовка ----------
+  function drawErased() {
+    // всё позади Ластика стёрто: чистый синий фон без сетки и линий
+    const edge = eraser.x - eraserHalf() + 6;
+    if (edge > 7) {
+      ctx.fillStyle = C.bg;
+      ctx.fillRect(7, 74, edge - 7, VH - 81);
+      // мягкие следы трения у края
+      ink(1, 0.18);
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const y = 90 + i * ((VH - 110) / 5) + Math.sin(i * 7.1) * 6;
+        ctx.moveTo(edge - 14, y); ctx.lineTo(edge - 3, y + 2);
+      }
+      ctx.stroke();
+    }
+    // катышки
+    for (const c of crumbs) {
+      if (c.x > edge + 6) continue;
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(c.rot);
+      ctx.scale(c.s, c.s);
+      ink(1.1, 0.8);
+      ctx.beginPath();
+      ctx.moveTo(-2.6, 0.4);
+      ctx.quadraticCurveTo(-1, -2.2, 0.4, 0);
+      ctx.quadraticCurveTo(1.6, 2, 2.8, -0.6);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function drawSpring(x0, y0, x1, y1, coils) {
+    const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    for (let i = 1; i < coils * 2; i++) {
+      const k = i / (coils * 2), side = i % 2 ? 1 : -1;
+      ctx.lineTo(x0 + dx * k + nx * 4 * side, y0 + dy * k + ny * 4 * side);
+    }
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+  }
+
+  function drawGlove(x, y, ang) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    ink(1.5);
+    sRect(-4, -4, 4, 8); paper(); ctx.stroke();                  // манжета
+    sCircle(5, 0, 6.5, 6); paper(); ctx.stroke();               // кулак
+    sCircle(4, -6, 2.6); paper(); ctx.stroke();                 // большой палец
+    ink(1, 0.7);
+    ctx.beginPath(); ctx.moveTo(8, -3); ctx.lineTo(8, 3); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawAnvil(x, y) {
+    // наковальня: x — центр, y — низ
+    ink(1.6);
+    sPoly([[x - 16, y - 18], [x + 12, y - 18], [x + 22, y - 14], [x + 12, y - 12], [x + 6, y - 12],
+           [x + 5, y - 5], [x + 11, y - 5], [x + 11, y], [x - 11, y], [x - 11, y - 5], [x - 5, y - 5],
+           [x - 6, y - 12], [x - 16, y - 12]], true);
+    paper(); ctx.stroke();
+    write('1 Т', x - 3, y - 14.5, 8, 'center', 0.9, 'middle');
+  }
+
+  function drawRocket(fl) {
+    // ракета на роликах под Ластиком, нос вправо
+    ink(1.6);
+    sPoly([[-30, -12], [14, -12], [26, -6], [14, 0], [-30, 0]], true); paper(); ctx.stroke();
+    sPoly([[-30, -12], [-37, -18], [-24, -12]], true); paper(); ctx.stroke();
+    sPoly([[-30, 0], [-37, 6], [-24, 0]], true); paper(); ctx.stroke();
+    ink(1, 0.7);
+    ctx.beginPath(); ctx.moveTo(-6, -12); ctx.lineTo(-6, 0); ctx.stroke();
+    write('АКМЕ', 4, -6, 7, 'center', 0.85, 'middle');
+    // ролики
+    ink(1.3);
+    for (const wx of [-22, -6, 10]) { ctx.beginPath(); ctx.arc(wx, 3, 2.6, 0, Math.PI * 2); paper(); ctx.stroke(); }
+    // пламя
+    if (fl > 0) {
+      ink(1.3, 0.9);
+      ctx.beginPath();
+      const L = 10 + fl * (8 + Math.sin(T * 50) * 4);
+      ctx.moveTo(-31, -10); ctx.lineTo(-31 - L, -6 + Math.sin(T * 40) * 2); ctx.lineTo(-31, -2);
+      ctx.moveTo(-31, -8); ctx.lineTo(-31 - L * 0.6, -6); ctx.lineTo(-31, -4);
+      ctx.stroke();
+    }
+  }
+
+  function drawEraserBody(squash) {
+    // тело — прямоугольный ластик с бумажной обёрткой; смотрит вправо
+    const w = EW, h = EH * (1 - squash * 0.62);
+    const legL = ELEG * (1 - squash * 0.7);
+    const top = -legL - h;
+    // ножки
+    const moving = eraser.step;
+    for (const side of [0, 1]) {
+      const hx = side ? 6 : -6;
+      const ph = moving + side * Math.PI;
+      const fx = hx + Math.sin(ph) * 4, fy = -Math.max(0, Math.cos(ph)) * 2.5;
+      ink(2);
+      ctx.beginPath(); ctx.moveTo(hx, -legL); ctx.quadraticCurveTo(hx + 2, (fy - legL) / 2, fx, fy); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(fx + 2.5, fy - 1, 4.2, 2.2, 0, 0, Math.PI * 2); paper(C.body); ctx.stroke();
+    }
+    ink(1.8);
+    sRect(-w / 2, top, w, h); paper(C.body); ctx.stroke();
+    // обёртка на задней половине с косой границей и штриховкой
+    ink(1.4);
+    sPoly([[-w / 2, top], [-w * 0.02, top], [-w * 0.14, top + h], [-w / 2, top + h]], true);
+    paper(); ctx.stroke();
+    ink(0.9, 0.55);
+    ctx.beginPath();
+    for (let i = 1; i < 6; i++) { const xx = -w / 2 + i * 3.4; ctx.moveTo(xx, top + 2); ctx.lineTo(xx - 3, top + h - 2); }
+    ctx.stroke();
+    // стёртый, «съеденный» задний угол
+    ink(1, 0.7);
+    ctx.beginPath(); ctx.moveTo(-w / 2 - 1, top + h * 0.7); ctx.quadraticCurveTo(-w / 2 + 3, top + h * 0.85, -w / 2 + 2, top + h + 1); ctx.stroke();
+    // хитрые глаза: прищур, брови домиком вниз к переносице
+    const ey = top + h * 0.36, er = Math.max(1.4, 3.6 * (1 - squash * 0.5));
+    for (const ex of [w * 0.12, w * 0.33]) {
+      ctx.fillStyle = C.line;
+      ctx.beginPath(); ctx.ellipse(ex, ey, 3.2, er, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.ink;
+      ctx.beginPath(); ctx.arc(ex + 1.3, ey + 0.6, 1.5, 0, Math.PI * 2); ctx.fill();
+      // веко прикрывает верх — прищур
+      ctx.fillStyle = C.body;
+      ctx.fillRect(ex - 3.6, ey - er - 1, 7.2, er * 0.85 + 1);
+      ink(1.1);
+      ctx.beginPath(); ctx.moveTo(ex - 3.4, ey - er * 0.15); ctx.lineTo(ex + 3.4, ey - er * 0.15); ctx.stroke();
+    }
+    ink(1.4);
+    ctx.beginPath();
+    ctx.moveTo(w * 0.04, ey - er - 3); ctx.lineTo(w * 0.2, ey - er - 1);     // левая бровь — вниз к центру
+    ctx.moveTo(w * 0.25, ey - er - 1); ctx.lineTo(w * 0.42, ey - er - 3.5);  // правая
+    ctx.stroke();
+    // ухмылка до ушей, кривая, с зубами
+    const my = top + h * 0.68;
+    ink(1.4);
+    ctx.beginPath();
+    ctx.moveTo(w * 0.0, my - 1.5);
+    ctx.quadraticCurveTo(w * 0.24, my + 5.5 * (1 - squash * 0.6), w * 0.46, my - 3);
+    ctx.stroke();
+    ink(0.9, 0.85);
+    ctx.beginPath();
+    ctx.moveTo(w * 0.06, my + 0.2); ctx.quadraticCurveTo(w * 0.24, my + 2.4 * (1 - squash * 0.6), w * 0.41, my - 1.2);
+    for (const tx of [0.14, 0.24, 0.34]) { ctx.moveTo(w * tx, my - 0.2); ctx.lineTo(w * tx, my + 2.2 * (1 - squash * 0.6)); }
+    ctx.stroke();
+  }
+
+  function drawEraser() {
+    if (eraser.x < -60 || eraser.x > W + 60) { drawEraserFx(); return; }
+    const g = eraser.gadget;
+    const gy = groundY(eraser.x);
+    const bob = Math.abs(Math.sin(eraser.step)) * 1.5;
+    ctx.save();
+    ctx.translate(eraser.x, gy - bob);
+    ctx.scale(ES, ES);
+    inkScale = ES;
+    ctx.rotate(0.08);   // бежит, наклонившись вперёд
+
+    let riding = false;
+    if (g && g.type === 'rocket' && !g.boom) {
+      riding = true;
+      // взлёт задом наперёд при неудаче
+      if (!g.ok && g.t > 0.6) {
+        const u = clamp((g.t - 0.6) / 0.6, 0, 1);
+        ctx.translate(u * 14, -u * u * 96);   // свечкой вверх, носом в небо
+        ctx.rotate(-u * 1.45);
+      } else if (g.t < 0.6) {
+        ctx.translate(Math.sin(T * 60) * 0.8, 0);   // трясётся, пока горит фитиль
+      }
+      drawRocket(g.t >= 0.6 ? 1 : 0);
+      if (g.t < 0.6) {   // искры фитиля
+        ink(1, 0.9);
+        ctx.beginPath();
+        for (let i = 0; i < 4; i++) { const a = T * 20 + i * 1.6; ctx.moveTo(-33, -6); ctx.lineTo(-33 + Math.cos(a) * 5, -6 + Math.sin(a) * 5); }
+        ctx.stroke();
+      }
+      ctx.translate(0, -12);
+    }
+    if (!(g && g.type === 'rocket' && g.boom)) drawEraserBody(eraser.squash);
+
+    const topY = -(riding ? 0 : 0) - ELEG - EH;
+    if (g && g.type === 'magnet') {
+      const raise = clamp(g.t / 0.4, 0, 1);
+      const mx = EW / 2 + 9, my = topY + 6 - raise * 8;
+      // подкова-магнит, открыта вправо
+      ink(3.2);
+      ctx.beginPath(); ctx.arc(mx, my, 7, Math.PI * 0.5, Math.PI * 1.5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx, my - 7); ctx.lineTo(mx + 8, my - 7); ctx.moveTo(mx, my + 7); ctx.lineTo(mx + 8, my + 7); ctx.stroke();
+      ctx.strokeStyle = C.body; ctx.lineWidth = 1.4 / inkScale;
+      ctx.beginPath(); ctx.arc(mx, my, 7, Math.PI * 0.5, Math.PI * 1.5); ctx.stroke();
+      ink(1.2);
+      ctx.beginPath(); ctx.moveTo(mx + 5, my - 9); ctx.lineTo(mx + 5, my - 5); ctx.moveTo(mx + 5, my + 5); ctx.lineTo(mx + 5, my + 9); ctx.stroke();
+      // силовые линии в сторону Искорки
+      if (g.t >= 0.4 && (g.ok ? g.t < 1.6 : g.t < 1.1)) {
+        ink(1, 0.6);
+        ctx.setLineDash([3, 4]);
+        ctx.lineDashOffset = T * 40;
+        for (let i = 1; i <= 3; i++) {
+          ctx.beginPath();
+          ctx.ellipse(mx + 9 + i * 7, my, i * 5, i * 7, 0, -Math.PI / 2, Math.PI / 2);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+      // неудача: сверху падает наковальня
+      if (!g.ok && g.t > 0.75) {
+        const k = clamp((g.t - 0.75) / 0.4, 0, 1);
+        const restY = -ELEG * (1 - eraser.squash * 0.7) - EH * (1 - eraser.squash * 0.62);
+        const ay = -230 + (restY + 230) * k * k;
+        if (g.t < 1.9) drawAnvil(0, ay);
+      }
+    }
+    if (g && g.type === 'glove') {
+      const bx = EW / 2 + 2, by = topY + 8;
+      ink(1.5);
+      sRect(bx, by - 6, 12, 12); paper(); ctx.stroke();
+      write('?', bx + 6, by, 9, 'center', 0.9, 'middle');
+      const sx0 = bx + 12, sy0 = by;
+      if (g.t >= 0.4 && !g.punched) {
+        let ex, ey, ang;
+        if (g.ok) {
+          // летит вперёд и чуть-чуть не достаёт
+          const reach = Math.max(30, (player.x - 30 - eraser.x) / ES - sx0);
+          const u = clamp((g.t - 0.4) / 0.15, 0, 1);
+          const wob = g.t < 1.2 ? Math.sin((g.t - 0.4) * 30) * 6 * Math.exp(-(g.t - 0.4) * 3) : 0;
+          const back = g.t > 1.25 ? clamp((g.t - 1.25) / 0.3, 0, 1) : 0;
+          const L = (reach * u + wob) * (1 - back);
+          ex = sx0 + L; ey = sy0; ang = 0;
+        } else {
+          // описывает дугу назад, прямо ему в лицо
+          const u = clamp((g.t - 0.4) / 0.32, 0, 1);
+          const a = -Math.PI * u;
+          ex = sx0 + Math.cos(a) * 26 - 6 * u; ey = sy0 + Math.sin(a) * 26 * 0.9;
+          ang = a;
+        }
+        ink(1.3);
+        drawSpring(sx0, sy0, ex, ey, 6);
+        drawGlove(ex, ey, ang);
+      } else if (g.t < 0.4) {
+        drawGlove(sx0 + 2 + Math.sin(T * 40) * 0.8, sy0, 0);
+      }
+    }
+    ctx.restore();
+    inkScale = 1;
+
+    // реплика Ластика
+    if (eraser.sayT > 0) {
+      const a = Math.min(1, eraser.sayT / 0.3);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.font = '15px ' + FONT;
+      const tw = ctx.measureText(eraser.sayText).width;
+      const bw = tw + 14, bh = 21;
+      const tipX = eraser.x + 6, tipY = gy - (ELEG + EH) * ES - 8;
+      const bx = clamp(eraser.x - 6, 10, W - bw - 10), by = tipY - 8 - bh;
+      ink(1.6);
+      roundRect(bx, by, bw, bh, 9); paper(); ctx.stroke();
+      const tx = clamp(tipX - 4, bx + 6, bx + bw - 14);
+      ctx.beginPath(); ctx.moveTo(tx, by + bh - 1); ctx.lineTo(tipX, tipY); ctx.lineTo(tx + 8, by + bh - 1); paper();
+      ctx.beginPath(); ctx.moveTo(tx, by + bh); ctx.lineTo(tipX, tipY); ctx.lineTo(tx + 8, by + bh); ctx.stroke();
+      write(eraser.sayText, bx + bw / 2, by + bh / 2 + 1, 15, 'center', 1, 'middle');
+      ctx.restore();
+    }
+    drawEraserFx();
+  }
+
+  function drawEraserFx() {
+    for (const f of eraser.fx) {
+      const k = 1 - f.t / 0.8;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, f.t / 0.3);
+      ink(1.5);
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3 + 0.3;
+        sCircle(f.x + Math.cos(a) * (10 + k * 8), f.y - OFF + Math.sin(a) * (7 + k * 5), 7 + k * 3);
+        paper(); ctx.stroke();
+      }
+      sCircle(f.x, f.y - OFF, 11 + k * 4); paper(); ctx.stroke();
+      ctx.font = f.size + 'px ' + FONT;
+      write(f.text, f.x, f.y - OFF + 1, f.size, 'center', 1, 'middle');
+      ctx.restore();
+    }
+  }
+
+  // ---------- Ластик: звуки ----------
+  function fuseSfx() { if (sfxOk()) whoosh(audio.currentTime, 5000, 6000, 0.6, 0.06); }
+  function boomSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    noiseHit(t, 'lowpass', 500, 0.6, 0.4, 0.6);
+    blip(t, 'sine', 130, 40, 0.35, 0.5);
+  }
+  function humSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    slide(t, 'sine', 110, 104, 1.1, 0.06, 4);
+    slide(t, 'triangle', 220, 210, 1.1, 0.025, 6);
+  }
+  function anvilWhistleSfx() { if (sfxOk()) slide(audio.currentTime, 'sine', 2100, 500, 0.4, 0.06); }
+  function clangSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    for (const f of [523, 1239, 2087, 3010]) blip(t, 'sine', f, f * 0.99, 0.07, 0.9);
+    noiseHit(t, 'highpass', 3000, 0.7, 0.12, 0.05);
+  }
+  function punchSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    noiseHit(t, 'lowpass', 900, 0.7, 0.3, 0.1);
+    blip(t, 'sine', 170, 55, 0.32, 0.16);
+  }
+  function rubSfx() { if (sfxOk()) noiseHit(audio.currentTime, 'bandpass', 1300, 0.7, 0.13, 0.1); }
 
   // ---------- Цикл ----------
   let last = performance.now();
