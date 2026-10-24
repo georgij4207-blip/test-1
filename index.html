@@ -274,7 +274,7 @@
         <li><b>Офисный хлам на земле</b> — стопки бумаг, блоки кода, кружки, мониторы, коробки, клавиатуры, кактусы и конусы — нужно перепрыгнуть.</li>
         <li><b>Летающие помехи</b> — ошибки, жуки-баги, бумажные самолётики и часы-дедлайны — появляются после 180 очков. Через низкие прыгайте, под средними пригибайтесь, под высокими можно просто пробежать.</li>
         <li><b>Обрывы, речки и сломанные мосты</b> — провалы в земле: их нужно перепрыгнуть, и Искорка пролетит над ними сальто — вперёд или назад, как получится. Не прыгнули — споткнётесь на краю.</li>
-        <li><b>Ластик</b> гонится сзади и стирает всё за собой. Иногда он запускает дурацкие изобретения — обычно они бьют по нему же. С каждой потерянной жизнью он ближе; на последней — догонит и сотрёт.</li>
+        <li><b>Ластик</b> гонится сзади, роняя катышки. Иногда он запускает дурацкие изобретения — обычно они бьют по нему же. С каждой потерянной жизнью он ближе; на последней — догонит и сотрёт.</li>
         <li><b>Канат над провалом.</b> Прыгать не нужно: Искорка сама медленно пройдёт по канату, балансируя.</li>
         <li><b>Батут.</b> Если приземлиться на препятствие сверху, Искорка отскочит и получит <b>+25 очков</b>.</li>
         <li><b>Три запасные жизни.</b> Удар сбоку или снизу отнимает одну: Искорка отлетает, сидит оглушённая, встряхивается и бежит дальше. Когда запасные жизни кончатся, следующий удар заканчивает игру.</li>
@@ -2828,7 +2828,17 @@
       ctx.restore();
     }
 
-    drawPlayer();
+    if (hitSeq && hitSeq.last && hitSeq.t >= HIT.knock) {
+      // финал: Ластик стирает Искорку — пропадает всё, по чему он уже прошёлся
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(eraser.x - eraserHalf() + 6, -OFF - 10, W + 20, VH + 20);
+      ctx.clip();
+      drawPlayer();
+      ctx.restore();
+    } else {
+      drawPlayer();
+    }
 
     for (const p of popups) {
       ctx.globalAlpha = Math.min(1, p.t / 0.4);
@@ -2869,7 +2879,7 @@
   }
 
   // ---------- Преследователь: Ластик ----------
-  // Гонится сзади и стирает всё за собой. Чем меньше у Искорки жизней, тем он ближе.
+  // Гонится сзади, роняя катышки. Чем меньше у Искорки жизней, тем он ближе.
   const EW = 38, EH = 26, ES = 1.25, ELEG = 7;          // размеры Ластика (до масштаба ES)
   const ERASER_DIST = [40, 64, 90, 116];               // дистанция до Искорки по числу запасных жизней
   const ERASER_LINES = {
@@ -2898,6 +2908,17 @@
     player.erased = false;
   }
 
+  function spawnCrumbs(n, power) {
+    for (let i = 0; i < n && crumbs.length < 120; i++) {
+      const cx = eraser.x + rand(-10, 8);
+      crumbs.push({
+        x: cx, y: groundY(cx) + OFF - eraser.yOff - 2,
+        vx: rand(-70, 30) * power, vy: rand(-140, -50) * power,
+        rot: rand(0, 6.28), s: rand(0.7, 1.25), life: rand(1.6, 2.4),
+      });
+    }
+  }
+
   function eraserSay(kind, chance = 1) {
     if (Math.random() > chance) return;
     eraser.sayText = pick(ERASER_LINES[kind]);
@@ -2923,21 +2944,25 @@
       if (f.t <= 0) eraser.fx.splice(i, 1);
     }
 
-    // катышки сыплются с ластика и остаются лежать там, где была земля
+    // катышки сыплются из-под ножек на бегу: отскакивают, катятся и через пару секунд тают
     const rubbing = !!(hitSeq && hitSeq.last && hitSeq.t >= HIT.knock);
-    const rate = worldSpeed / 300 * 22 + (rubbing ? 40 : 0);
-    if (eraser.x > -40 && Math.random() < rate * dt && crumbs.length < 140) {
-      const cx = eraser.x - eraserHalf() + rand(-2, 6);
-      crumbs.push({
-        x: cx, y: groundY(cx) + OFF - rand(8, 34), vy: rand(-40, 10),
-        rest: groundY(cx) + OFF + rand(-4, 20), rot: rand(0, 6.28), s: rand(0.7, 1.3),
-      });
-    }
+    const running = eraser.onGround && eraser.trip <= 0 && (worldSpeed > 1 || rubbing);
+    const rate = running ? worldSpeed / 300 * 14 + (rubbing ? 40 : 0) : 0;
+    if (eraser.x > -40 && Math.random() < rate * dt) spawnCrumbs(1, 1);
     for (let i = crumbs.length - 1; i >= 0; i--) {
       const c = crumbs[i];
-      c.x -= worldSpeed * dt;
-      if (c.y < c.rest) { c.vy += 420 * dt; c.y = Math.min(c.rest, c.y + c.vy * dt); }
-      if (c.x < 0) crumbs.splice(i, 1);
+      c.life -= dt;
+      c.x += (c.vx - worldSpeed) * dt;
+      c.vy += 900 * dt;
+      c.y += c.vy * dt;
+      const gy = groundY(c.x) + OFF - 1.5 * c.s;
+      if (c.y >= gy) {
+        c.y = gy;
+        if (c.vy > 40) { c.vy = -c.vy * 0.42; c.vx *= 0.75; }   // отскок
+        else { c.vy = 0; c.vx *= 1 - Math.min(1, dt * 2.2); }  // катится и тормозит
+      }
+      c.rot += c.vx * dt / (2.5 * c.s);
+      if (c.life <= 0 || c.x < -10) crumbs.splice(i, 1);
     }
 
     // прыжки через препятствия — та же физика, что у Искорки; иногда не успевает и спотыкается
@@ -2948,6 +2973,7 @@
       if (eraser.yOff <= 0) {
         eraser.yOff = 0; eraser.vy = 0; eraser.onGround = true;
         eraser.landSq = 0.45;   // плюх — сплющивается при приземлении
+        spawnCrumbs(9, 1.6);    // горсточка катышков побольше
         if (sfxOk()) blip(audio.currentTime, 'sine', 200, 70, 0.18, 0.12);
       }
     }
@@ -3105,28 +3131,14 @@
 
   // ---------- Ластик: отрисовка ----------
   function drawErased() {
-    // всё позади Ластика стёрто: чистый синий фон без сетки и линий
-    const edge = eraser.x - eraserHalf() + 6;
-    if (edge > 7) {
-      ctx.fillStyle = C.bg;
-      ctx.fillRect(7, 74 + safe.t, edge - 7, VH - 81 - safe.t);
-      // мягкие следы трения у края
-      ink(1, 0.18);
-      ctx.beginPath();
-      for (let i = 0; i < 5; i++) {
-        const y = 90 + i * ((VH - 110) / 5) + Math.sin(i * 7.1) * 6;
-        ctx.moveTo(edge - 14, y); ctx.lineTo(edge - 3, y + 2);
-      }
-      ctx.stroke();
-    }
-    // катышки
+    // катышки из-под ножек Ластика (карту он больше не стирает)
     for (const c of crumbs) {
-      if (c.x > edge + 6) continue;
       ctx.save();
+      ctx.globalAlpha = Math.min(1, c.life / 0.6);
       ctx.translate(c.x, c.y);
       ctx.rotate(c.rot);
       ctx.scale(c.s, c.s);
-      ink(1.1, 0.8);
+      ink(1.1, 0.85);
       ctx.beginPath();
       ctx.moveTo(-2.6, 0.4);
       ctx.quadraticCurveTo(-1, -2.2, 0.4, 0);
