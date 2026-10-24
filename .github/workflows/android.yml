@@ -1,0 +1,52 @@
+# Отладочный APK «Искорки»: собирается при каждом изменении и выкладывается артефактом сборки.
+name: Android APK
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  debug-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Зависимости
+        run: npm ci
+
+      - name: Игра → проект Android
+        run: npm run sync
+
+      - name: Сборка отладочного APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon -PversionCode=${{ github.run_number }}
+
+      - name: Имя файла
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk "iskorka-debug-${{ github.run_number }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iskorka-debug-apk
+          path: iskorka-debug-${{ github.run_number }}.apk
+          if-no-files-found: error

@@ -1,0 +1,8 @@
+{
+  "appId": "com.iskorka.game",
+  "appName": "Искорка",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#4B62B6"
+  }
+}

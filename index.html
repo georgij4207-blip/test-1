@@ -523,8 +523,10 @@
 
   // Полный экран и альбомная ориентация — по первому касанию (браузеры разрешают только после жеста)
   let fsTried = false;
+  // в Android-приложении полный экран и ориентацию задаёт само приложение
+  const isNativeApp = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   function goFullscreen() {
-    if (!isPhone || fsTried) return;
+    if (!isPhone || fsTried || isNativeApp) return;
     fsTried = true;
     const el = document.documentElement;
     const req = el.requestFullscreen || el.webkitRequestFullscreen;
@@ -6351,7 +6353,7 @@
   function rubSfx() { if (sfxOk()) noiseHit(audio.currentTime, 'bandpass', 1300, 0.7, 0.13, 0.1); }
 
   // ---------- PWA: офлайн и установка как приложение ----------
-  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !isNativeApp) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch(() => { /* в песочнице и без HTTPS не получится — игра работает и так */ });
     });
