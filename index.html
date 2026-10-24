@@ -3220,10 +3220,254 @@
     crumbs.push({ x, y: groundY(x) + OFF - rand(6, 30), vx, vy: rand(-120, -40), rot: rand(0, 6.28), s: rand(0.7, 1.2), life: rand(1.2, 1.8) });
   }
 
-  function startGadget() {
-    eraser.gadget = { type: pick(['rocket', 'magnet', 'glove']), t: 0, ok: Math.random() < 0.35 };
-    eraserSay('plan');
+  // ---------- Канцелярские изобретения ACME ----------
+  // Перед каждым — табличка с названием; обычно срабатывают против самого Ластика.
+  const STAT = {
+    pencil:    { name: 'Карандаш-прыгун ACME!',   line: 'Ну почему опять я…',  failAt: 1.6, dur: 3.0 },
+    sharpener: { name: 'Супер-точилка ACME!',     line: 'Апчхи!',              failAt: 1.5, dur: 3.0 },
+    ruler:     { name: 'Линейка-катапульта ACME!', line: 'Не в ту сторону!',   failAt: 1.4, dur: 2.8 },
+    clip:      { name: 'Скрепка-ловушка ACME!',   line: 'Ай-ай-ай!',           failAt: 1.45, dur: 2.9 },
+    scissors:  { name: 'Ножницы-скороход ACME!',  line: 'Ой…',                 failAt: 1.8, dur: 3.0 },
+    tape:      { name: 'Липкая лента ACME!',      line: 'Отклейся, отклейся!', failAt: 1.45, dur: 3.1 },
+    compass:   { name: 'Циркуль-шагомер ACME!',   line: 'Голова кружится…',    failAt: 1.6, dur: 3.0 },
+  };
+
+  function eraserSayText(text) {
+    eraser.sayText = text;
+    eraser.sayT = 1.6;
+    popSfx();
   }
+
+  function startGadget() {
+    eraser.gadget = { type: pick(Object.keys(STAT)), t: 0, ok: Math.random() < 0.25 };
+    zipSfx();   // табличка выскакивает
+  }
+
+  function updateStat(g, dt) {
+    const S = STAT[g.type], t = g.t;
+    if (t >= 1.0 && !g.started) { g.started = true; statStartSfx(g.type); }
+    if (g.ok) {
+      // сработало: рывок вперёд, ближе к Искорке
+      if (t >= 1.0) { eraser.offTarget = -32; eraser.offRate = 3; }
+      if (t >= 2.0) { eraserSay('win'); endGadget(); }
+      return;
+    }
+    if (t >= S.failAt && !g.failed) {
+      g.failed = true;
+      statFailSfx(g.type);
+      if (g.type !== 'sharpener') eraserSayText(S.line);   // у точилки реплика — когда вылетит обратно
+      setExpr(g.type === 'compass' || g.type === 'ruler' ? 'shock' : 'pout', 2.0);
+      eraser.offRate = 1.2;
+      eraser.offTarget = { pencil: 70, sharpener: 55, ruler: 120, clip: 50, scissors: 70, tape: 85, compass: 50 }[g.type];
+      if (g.type === 'scissors') eraser.trip = 1.2;   // самокат разрезан — шлёпается носом
+    }
+    if (g.type === 'sharpener' && t >= 2.2 && !g.sneezed) {
+      g.sneezed = true;
+      eraserSayText(S.line);
+      sneezeSfx();
+      eraserFx('АПЧХИ!', eraser.x + 26, groundY(eraser.x) + OFF - 34, 16);
+      eraser.landSq = -0.35; eraser.sqV = 0;
+    }
+    if (t >= S.dur) { setExpr('pout', 1.2); endGadget(); }
+  }
+
+  // поза Ластика во время изобретения (в его локальных координатах, до масштаба)
+  function statPose(g) {
+    const t = g.t, p = { dx: 0, dy: 0, rot: 0, sx: 1, sy: 1, hide: false };
+    const fail = !g.ok && g.failed;
+    if (g.type === 'pencil') {
+      if (t >= 1.0 && !fail) p.dy = -20 - Math.abs(Math.sin((t - 1) * 12)) * 16;   // скачет на карандаше
+      if (fail) { p.dy = -12; p.rot = Math.sin(t * 18) * 0.25 * Math.max(0, 1 - (t - 1.6) / 1.2); }   // воткнулся и качается
+    } else if (g.type === 'sharpener' && fail) {
+      const k = clamp((t - 1.5) / 0.4, 0, 1);
+      p.dx = 30 * k; p.sx = 1 - k * 0.85; p.sy = 1 - k * 0.6;   // засасывает в точилку
+      if (t > 1.9 && t < 2.2) p.hide = true;
+      if (t >= 2.2) { p.dx = 0; p.sx = p.sy = 1; }
+    } else if (g.type === 'ruler') {
+      if (t >= 1.0 && t < 1.4) p.dy = -4;
+      if (fail) { const u = clamp((t - 1.4) / 0.8, 0, 1); p.dy = -Math.sin(Math.PI * u) * 70; p.rot = -u * Math.PI * 2; }   // летит назад кувырком
+    } else if (g.type === 'clip' && fail) {
+      p.dy = -Math.abs(Math.sin(t * 14)) * 9;   // скачет на одной ноге
+      p.rot = Math.sin(t * 14) * 0.1;
+    } else if (g.type === 'scissors' && t >= 1.0 && !fail) {
+      p.dy = -10;   // едет на самокате
+    } else if (g.type === 'tape' && fail) {
+      p.rot = Math.sin(t * 30) * 0.08; p.sx = 0.94;   // замотан, дёргается
+    } else if (g.type === 'compass') {
+      if (t >= 1.0 && !fail) p.dy = -26;
+      if (fail) {
+        const u = clamp((t - 1.6) / 0.8, 0, 1);
+        p.dy = -26 * (1 - u);
+        p.rot = (t - 1.6) * 28 * (1 - u * 0.7);   // крутится волчком
+        if (u >= 1) p.rot = Math.sin(t * 6) * 0.15;   // шатается
+      }
+    }
+    return p;
+  }
+
+  function drawPencil(x0, y0, x1, y1) {
+    // карандаш от (x0,y0) — торец с ластиком — до острия (x1,y1)
+    const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1, nx = -dy / L * 3, ny = dx / L * 3;
+    const bx = x1 - dx / L * 7, by = y1 - dy / L * 7;
+    ink(1.4);
+    ctx.beginPath(); ctx.moveTo(x0 + nx, y0 + ny); ctx.lineTo(bx + nx, by + ny); ctx.lineTo(x1, y1); ctx.lineTo(bx - nx, by - ny); ctx.lineTo(x0 - nx, y0 - ny); ctx.closePath();
+    paper(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x0 + dx / L * 4 + nx, y0 + dy / L * 4 + ny); ctx.lineTo(x0 + dx / L * 4 - nx, y0 + dy / L * 4 - ny); ctx.stroke();
+  }
+
+  function drawStat(g, layer, p) {
+    const t = g.t, fail = !g.ok && g.failed;
+    if (layer === 'back') {
+      if (g.type === 'pencil' && t >= 1.0) {
+        // карандаш-пружина под ногами
+        const top = fail ? -12 : p.dy, tip = fail ? 6 : 0;
+        drawPencil(0, top, 0, tip);
+        if (!fail) { ink(1.2); ctx.beginPath(); for (let i = 0; i <= 6; i++) ctx.lineTo((i % 2 ? 3 : -3), -6 + i); ctx.stroke(); }
+        if (fail) { ink(1, 0.7); ctx.beginPath(); ctx.moveTo(-6, 0.5); ctx.lineTo(-2, -1.5); ctx.moveTo(6, 0.5); ctx.lineTo(2, -1.5); ctx.stroke(); }
+      }
+      if (g.type === 'sharpener' && t >= 0.3) {
+        // точилка с шлангом-раструбом вперёд
+        ink(1.5);
+        sRect(24, -16, 16, 16); paper(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(32, -8, 3.2, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(40, -10); ctx.quadraticCurveTo(52, -22, 62, -10); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(60, -14); ctx.lineTo(68, -18); ctx.lineTo(68, -2); ctx.lineTo(60, -6); ctx.stroke();
+        if (t >= 1.0 && t < 1.9) {
+          ink(1, 0.6); ctx.setLineDash([3, 3]); ctx.lineDashOffset = fail ? -T * 60 : T * 60;
+          ctx.beginPath();
+          for (let i = 0; i < 3; i++) { ctx.moveTo(fail ? 20 : 92, -14 + i * 5); ctx.lineTo(fail ? 4 : 70, -12 + i * 4); }
+          ctx.stroke(); ctx.setLineDash([]);
+        }
+      }
+      if (g.type === 'ruler' && t >= 0.3) {
+        // линейка на опоре-ластике
+        const tilt = fail ? clamp((t - 1.4) / 0.1, 0, 1) * 0.5 : t >= 1.0 ? -0.25 : 0;
+        ink(1.4);
+        sPoly([[-4, 0], [4, 0], [0, -6]], true); paper(); ctx.stroke();
+        ctx.save(); ctx.translate(0, -6); ctx.rotate(tilt);
+        sRect(-34, -3, 68, 4); paper(); ctx.stroke();
+        ink(0.8, 0.8); ctx.beginPath(); for (let i = -30; i <= 30; i += 5) { ctx.moveTo(i, -3); ctx.lineTo(i, i % 10 ? -1.5 : -0.5); } ctx.stroke();
+        ctx.restore();
+        if (t >= 1.0) { drawStapler(26, fail ? -18 + clamp((t - 1.3) / 0.1, 0, 1) * 6 : -22 + clamp((t - 1.0) / 0.3, 0, 1) * 0); }
+      }
+      if (g.type === 'clip' && t >= 0.4 && !fail) {
+        // раскрытая скрепка-капкан на земле впереди
+        const x = 26 - clamp((t - 1.0) / 0.45, 0, 1) * 18;
+        ink(1.5);
+        ctx.beginPath(); ctx.moveTo(x - 9, 0); ctx.lineTo(x + 9, 0); ctx.arc(x + 9, -3, 3, Math.PI / 2, -Math.PI / 2, true); ctx.lineTo(x - 6, -6);
+        ctx.moveTo(x - 9, 0); ctx.lineTo(x - 14, -9); ctx.stroke();
+      }
+      if (g.type === 'scissors' && t >= 0.3) {
+        // ножницы-самокат: лезвия — дека, кольца — колёса
+        const open = fail ? clamp((t - 1.8) / 0.15, 0, 1) : 0;
+        ctx.save(); ctx.translate(0, -2);
+        for (const s of [-1, 1]) {
+          ctx.save(); ctx.rotate(s * open * 0.5);
+          ink(1.5);
+          sPoly([[-20, -2 + s], [22, -1], [-20, 2 + s]], true); paper(); ctx.stroke();
+          ctx.restore();
+        }
+        ink(1.4);
+        for (const wx of [-22, 22]) { ctx.beginPath(); ctx.arc(wx, 2, 3, 0, Math.PI * 2); paper(); ctx.stroke(); }
+        if (open < 1) { ctx.beginPath(); ctx.moveTo(18, -2); ctx.lineTo(18, -24); ctx.lineTo(13, -24); ctx.stroke(); }
+        ctx.restore();
+        if (fail && t < 2.0) write('ЧИК!', 20, -30, 9, 'center', 1, 'middle');
+      }
+      if (g.type === 'tape' && t >= 0.3) {
+        // рулон скотча и лента вперёд
+        ink(1.5);
+        ctx.beginPath(); ctx.arc(28, -7, 7, 0, Math.PI * 2); paper(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(28, -7, 3, 0, Math.PI * 2); ctx.stroke();
+        if (t >= 1.0 && !fail) { ink(1.2, 0.85); ctx.beginPath(); ctx.moveTo(30, 0); ctx.quadraticCurveTo(50, 2, 50 + (t - 1) * 60, 0); ctx.stroke(); }
+      }
+      if (g.type === 'compass' && t >= 1.0) {
+        // циркуль-ходули: две длинные ноги
+        const sp = fail ? 4 : 8 + Math.sin(t * 12) * 5;
+        const top = p.dy;
+        ink(1.6);
+        ctx.beginPath(); ctx.moveTo(-3, top); ctx.lineTo(-sp, 0); ctx.moveTo(3, top); ctx.lineTo(sp, 0); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, top - 1, 2.5, 0, Math.PI * 2); paper(); ctx.stroke();
+      }
+    } else {
+      // поверх тела (координаты тела)
+      if (g.type === 'clip' && fail) {
+        ink(1.5);
+        ctx.beginPath(); ctx.ellipse(8, -2, 7, 3.5, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(8, -2, 4, 1.8, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (g.type === 'tape' && fail) {
+        ink(1.3, 0.9);
+        for (const [a, b] of [[-26, -8], [-30, -18], [-20, -30]]) {
+          ctx.save(); ctx.globalAlpha *= 0.9;
+          ctx.beginPath(); ctx.moveTo(-22, a); ctx.lineTo(22, b); ctx.lineTo(22, b + 4); ctx.lineTo(-22, a + 4); ctx.closePath();
+          ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fill(); ctx.stroke();
+          ctx.restore();
+        }
+      }
+      if (g.type === 'compass' && fail && t > 2.2) {
+        // звёздочки вокруг головы — кружится
+        for (let i = 0; i < 3; i++) { const a = T * 5 + i * 2.1; drawStarlet(Math.cos(a) * 18, -46 + Math.sin(a) * 4, 0.7, T * 4); }
+      }
+      if (g.type === 'sharpener' && fail && t >= 2.2 && t < 2.7) {
+        ink(1.1, 0.8);
+        for (let i = 0; i < 5; i++) { const a = -0.8 + i * 0.4; ctx.beginPath(); ctx.arc(26 + Math.cos(a) * (8 + (t - 2.2) * 30), -20 + Math.sin(a) * 8, 2.5, 0, Math.PI * 2); ctx.stroke(); }
+      }
+    }
+  }
+
+  function drawStapler(x, y) {
+    ink(1.4);
+    sPoly([[x - 9, y], [x + 9, y], [x + 9, y + 4], [x - 9, y + 4]], true); paper(); ctx.stroke();
+    sPoly([[x - 9, y], [x + 8, y - 3], [x + 9, y]], true); paper(); ctx.stroke();
+  }
+
+  // табличка с названием над головой: выпрыгивает с отскоком
+  function drawStatSign(g) {
+    if (g.t > 1.35) return;
+    const name = STAT[g.type].name;
+    const pop = g.t < 0.18 ? (g.t / 0.18) * 1.15 : g.t < 0.28 ? 1.15 - (g.t - 0.18) / 0.1 * 0.15 : 1;
+    const a = g.t > 1.15 ? (1.35 - g.t) / 0.2 : 1;
+    ctx.save();
+    ctx.globalAlpha *= a;
+    ctx.translate(4, -ELEG - EH - 8);
+    ctx.scale(pop, pop);
+    ctx.font = '9px ' + FONT;
+    const tw = ctx.measureText(name).width, bw = tw + 10, bh = 14;
+    ink(1.4);
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -10); ctx.stroke();   // палочка
+    sRect(-bw / 2, -10 - bh, bw, bh); paper(); ctx.stroke();
+    ink(0.8, 0.6);
+    ctx.beginPath(); ctx.moveTo(-bw / 2 + 2, -10 - bh + 2); ctx.lineTo(-bw / 2 + 4, -10 - bh + 4); ctx.moveTo(bw / 2 - 2, -10 - bh + 2); ctx.lineTo(bw / 2 - 4, -10 - bh + 4); ctx.stroke();
+    write(name, 0, -10 - bh / 2 + 0.5, 9, 'center', 1, 'middle');
+    ctx.restore();
+  }
+
+  // звуки изобретений
+  function statStartSfx(type) {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    if (type === 'sharpener') whoosh(t, 300, 1500, 0.6, 0.08);
+    else if (type === 'scissors' || type === 'compass') slide(t, 'triangle', 300, 900, 0.2, 0.05);
+    else blip(t, 'triangle', 500, 700, 0.06, 0.1);
+  }
+  function statFailSfx(type) {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    if (type === 'pencil') { blip(t, 'sine', 300, 80, 0.3, 0.2); noiseHit(t, 'lowpass', 800, 0.7, 0.15, 0.08); }
+    else if (type === 'sharpener') { whoosh(t, 2500, 300, 0.4, 0.12); slide(t, 'sine', 900, 200, 0.4, 0.05); }
+    else if (type === 'ruler') boingSound();
+    else if (type === 'clip') { noiseHit(t, 'highpass', 3000, 0.8, 0.25, 0.04); blip(t, 'square', 1200, 600, 0.05, 0.06); }
+    else if (type === 'scissors') { noiseHit(t, 'highpass', 4000, 1, 0.2, 0.03); noiseHit(t + 0.08, 'highpass', 4500, 1, 0.2, 0.03); }
+    else if (type === 'tape') { for (let i = 0; i < 3; i++) noiseHit(t + i * 0.12, 'bandpass', 1800, 0.8, 0.12, 0.09); }
+    else if (type === 'compass') slide(t, 'sine', 300, 1600, 0.6, 0.05, 40);
+  }
+  function sneezeSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    slide(t, 'sine', 500, 900, 0.25, 0.04);
+    noiseHit(t + 0.28, 'bandpass', 1500, 0.6, 0.35, 0.18);
+  }
+
 
   function endGadget() {
     eraser.gadget = null;
@@ -3240,6 +3484,7 @@
     const g = eraser.gadget;
     g.t += dt;
     const t = g.t;
+    if (STAT[g.type]) { updateStat(g, dt); return; }
     if (g.type === 'rocket') {
       if (!g.lit) { g.lit = true; fuseSfx(); }
       if (t >= 0.6 && !g.go) { g.go = true; if (sfxOk()) whoosh(audio.currentTime, 400, 2600, 0.5, 0.12); }
@@ -3628,7 +3873,13 @@
       }
       ctx.translate(0, -12);
     }
-    if (!(g && g.type === 'rocket' && g.boom)) {
+    let gp = null;
+    if (g && STAT[g.type]) {
+      gp = statPose(g);
+      drawStat(g, 'back', gp);
+      ctx.translate(gp.dx, gp.dy); ctx.rotate(gp.rot); ctx.scale(gp.sx, gp.sy);
+    }
+    if (!(g && g.type === 'rocket' && g.boom) && !(gp && gp.hide)) {
       if (eraser.mode === 'leave') {
         // запрыгивает на ракету
         const u = clamp((eraser.lt - 1.5) / 0.4, 0, 1);
@@ -3636,6 +3887,7 @@
       }
       drawEraserBody(eraser.squash + eraser.landSq * 0.6);
     }
+    if (gp) { drawStat(g, 'front', gp); drawStatSign(g); }
 
     // ручки-щекоталки тянутся к Искорке
     if (eraser.tickle > 0) {
