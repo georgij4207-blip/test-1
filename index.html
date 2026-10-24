@@ -274,7 +274,7 @@
         <li><b>Офисный хлам на земле</b> — стопки бумаг, блоки кода, кружки, мониторы, коробки, клавиатуры, кактусы и конусы — нужно перепрыгнуть.</li>
         <li><b>Летающие помехи</b> — ошибки, жуки-баги, бумажные самолётики и часы-дедлайны — появляются после 180 очков. Через низкие прыгайте, под средними пригибайтесь, под высокими можно просто пробежать.</li>
         <li><b>Обрывы, речки и сломанные мосты</b> — провалы в земле: их нужно перепрыгнуть, и Искорка пролетит над ними сальто — вперёд или назад, как получится. Не прыгнули — споткнётесь на краю.</li>
-        <li><b>Ластик</b> гонится сзади, роняя катышки. Иногда он запускает дурацкие изобретения — обычно они бьют по нему же. С каждой потерянной жизнью он ближе; на последней — догонит и сотрёт.</li>
+        <li><b>Ластик</b> гонится сзади, роняя катышки, потом улетает на ракете и возвращается — сзади, спереди (через него надо перепрыгнуть) или из-за холма; перед этим мелькает макушка или летят катышки. Иногда он запускает дурацкие изобретения — обычно они бьют по нему же. С каждой потерянной жизнью он ближе; на последней — догонит и сотрёт.</li>
         <li><b>Канат над провалом.</b> Прыгать не нужно: Искорка сама медленно пройдёт по канату, балансируя.</li>
         <li><b>Батут.</b> Если приземлиться на препятствие сверху, Искорка отскочит и получит <b>+25 очков</b>.</li>
         <li><b>Три запасные жизни.</b> Удар сбоку или снизу отнимает одну: Искорка отлетает, сидит оглушённая, встряхивается и бежит дальше. Когда запасные жизни кончатся, следующий удар заканчивает игру.</li>
@@ -1490,7 +1490,7 @@
   const FALL_NAMES = { cliff: 'Свалиться в обрыв.', river: 'Плюхнуться в речку.', bridge: 'Провалиться на сломанном мосту.' };
   const HIT_NAMES = {
     papers: 'стопку бумаг', code: 'блок кода', err: 'летающую ошибку', warn: 'летающую ошибку',
-    bug: 'жука-бага', plane: 'бумажный самолётик', clock: 'часы-дедлайн', mug: 'кружку кофе',
+    eraser: 'Ластика', bug: 'жука-бага', plane: 'бумажный самолётик', clock: 'часы-дедлайн', mug: 'кружку кофе',
     monitor: 'монитор', boxes: 'коробки', keyboard: 'клавиатуру', cactus: 'кактус', cone: 'конус',
   };
   function startHit(o) {
@@ -1514,7 +1514,7 @@
     say('hit', 3, 1, 0);
     if (!last) popups.push({ x: player.x + 28, y: player.bottom - 72, t: 0.9, text: '−1 ♥' });
     if (eraser.gadget) endGadget();
-    if (!last) eraserSay('near', 0.5);
+    if (!last && eraser.mode === 'chase') { eraserSay('near', 0.5); eraser.chaseT += 8; }   // гонится дольше
   }
 
   function updateHit(dt) {
@@ -2889,6 +2889,10 @@
     near: ['Ближе, ближе…', 'Хе-хе!', 'Я иду-у-у!'],
     catch: ['Попалась!', 'Хе-хе, стёрто!'],
     giggle: ['Хи-хи-хи!', 'Хи-хи-хи-хи!'],
+    draft: ['Минуточку…', 'Сейчас начерчу…', 'Гениально!'],
+    laugh: ['Ха-ха-ха!', 'Бу-га-га!'],
+    back: ['Вау, я тебя снова нашёл!'],
+    stomp: ['Ой!', 'Эй, полегче!'],
     trip: ['Ой!', 'Кто тут поставил?!', 'Уф…', 'Не считается!'],
   };
   const eraser = {
@@ -2903,6 +2907,7 @@
       dist: 210, off: 0, offTarget: 0, offRate: 0.8, gadget: null, nextGadget: rand(7, 11),
       forceX: null, squash: 0, pulling: false, sayT: 0, fx: [],
       yOff: 0, vy: 0, onGround: true, landSq: 0, sqV: 0, trip: 0, tickle: 0, tickleCd: 3, kickT: 0,
+      mode: 'chase', chaseT: rand(20, 30), face: 1, lt: 0, fly: 0, flyV: 0, baseX: 0, awayFrom: 0, etype: '', hintT: 0, crestWX: 0,
     });
     crumbs = [];
     player.erased = false;
@@ -2928,13 +2933,27 @@
 
   const eraserHalf = () => EW * ES / 2;
 
+  // уровень растёт каждые 500 очков; чем выше уровень, тем короче перерыв между погонями
+  const eraserLevel = () => 1 + Math.floor(score / 500);
+  const awayMeters = () => Math.max(150, 400 - (eraserLevel() - 1) * 50);
+
   function updateEraser(dt, worldSpeed) {
     const target = ERASER_DIST[clamp(lives, 0, 3)];
     const approaching = Math.abs(target - eraser.dist) > 2;
     eraser.dist += (target - eraser.dist) * Math.min(1, dt * 0.9);
     eraser.off += (eraser.offTarget - eraser.off) * Math.min(1, dt * eraser.offRate);
-    if (eraser.forceX === null) eraser.x = player.x - eraser.dist - eraser.off;
-    eraser.step += dt * (worldSpeed > 1 ? Math.min(worldSpeed / 16, 40) : approaching || mode === 'ready' ? 12 : 0);
+    if (eraser.mode === 'chase') {
+      if (eraser.forceX === null) eraser.x = player.x - eraser.dist - eraser.off;
+      // погоня длится 20–30 секунд, потом Ластик улетает на ракете
+      if (mode === 'running' && !hitSeq) {
+        eraser.chaseT -= dt;
+        if (eraser.chaseT <= 0 && !eraser.gadget && eraser.tickle <= 0 && eraser.trip <= 0 && eraser.onGround && eraser.forceX === null) startLeave();
+      }
+    } else if (mode === 'running' || mode === 'ready') {
+      updateEraserAway(dt, worldSpeed);
+    }
+    eraser.step += dt * (eraser.mode === 'enterFront' ? 22 :
+      worldSpeed > 1 ? Math.min(worldSpeed / 16, 40) : approaching || mode === 'ready' ? 12 : 0);
     eraser.sayT = Math.max(0, eraser.sayT - dt);
     eraser.squash = Math.max(0, eraser.squash - dt * 0.9);
     for (let i = eraser.fx.length - 1; i >= 0; i--) {
@@ -2946,7 +2965,8 @@
 
     // катышки сыплются из-под ножек на бегу: отскакивают, катятся и через пару секунд тают
     const rubbing = !!(hitSeq && hitSeq.last && hitSeq.t >= HIT.knock);
-    const running = eraser.onGround && eraser.trip <= 0 && (worldSpeed > 1 || rubbing);
+    const running = eraser.onGround && eraser.trip <= 0 && (worldSpeed > 1 || rubbing) &&
+      (eraser.mode === 'chase' || eraser.mode === 'enterFront') && eraser.x < W + 30;
     const rate = running ? worldSpeed / 300 * 14 + (rubbing ? 40 : 0) : 0;
     if (eraser.x > -40 && Math.random() < rate * dt) spawnCrumbs(1, 1);
     for (let i = crumbs.length - 1; i >= 0; i--) {
@@ -2966,7 +2986,7 @@
     }
 
     // прыжки через препятствия — та же физика, что у Искорки; иногда не успевает и спотыкается
-    if (mode === 'running' && !hitSeq) eraserObstacles(worldSpeed);
+    if (mode === 'running' && !hitSeq && eraser.mode === 'chase') eraserObstacles(worldSpeed);
     if (!eraser.onGround) {
       eraser.vy += gravityFor(eraser.vy, false) * dt;
       eraser.yOff -= eraser.vy * dt;
@@ -2987,7 +3007,7 @@
     // совсем близко — вытягивает ручки и щекочет Искорку
     eraser.tickleCd = Math.max(0, eraser.tickleCd - dt);
     const gapToPlayer = (player.x - R * PS * 0.8) - (eraser.x + eraserHalf());
-    const canTickle = mode === 'running' && !hitSeq && !eraser.gadget && eraser.trip <= 0 && eraser.onGround &&
+    const canTickle = mode === 'running' && !hitSeq && eraser.mode === 'chase' && !eraser.gadget && eraser.trip <= 0 && eraser.onGround &&
       player.onGround && !(player.spin > 0) && gapToPlayer < 30;
     if (eraser.tickle > 0) {
       eraser.tickle = canTickle ? eraser.tickle - dt : 0;
@@ -3005,7 +3025,7 @@
 
     // дурацкие изобретения
     if (mode === 'running' && !hitSeq) {
-      if (!eraser.gadget && !(player.spin > 0)) {
+      if (!eraser.gadget && !(player.spin > 0) && eraser.mode === 'chase') {
         eraser.nextGadget -= dt;
         if (eraser.nextGadget <= 0) startGadget();
       }
@@ -3034,6 +3054,128 @@
         if (sfxOk()) { const t = audio.currentTime; blip(t, 'triangle', 500, 120, 0.15, 0.2); noiseHit(t, 'lowpass', 700, 0.7, 0.12, 0.1); }
       }
     }
+  }
+
+  // Ластик чертит ракету, она «материализуется», он садится и с хохотом улетает вправо
+  function startLeave() {
+    eraser.mode = 'leave';
+    eraser.lt = 0; eraser.fly = 0; eraser.flyV = 0;
+    eraser.baseX = eraser.x;
+    eraserSay('draft');
+  }
+
+  function updateEraserAway(dt, worldSpeed) {
+    const m = eraser.mode;
+    if (m === 'leave') {
+      eraser.lt += dt;
+      const t = eraser.lt;
+      eraser.h = eraser.h || {};
+      if (t < 1.2) { eraser.scribble = (eraser.scribble || 0) - dt; if (eraser.scribble <= 0) { rubSfx(); eraser.scribble = 0.16; } }
+      if (t >= 1.2 && !eraser.h.mat) { eraser.h.mat = true; zipSfx(); popSfx(); eraserFx('ВЖУХ!', eraser.baseX + 34, groundY(eraser.baseX) + OFF - 22, 18); }
+      if (t >= 1.9 && !eraser.h.go) { eraser.h.go = true; eraserSay('laugh'); laughSfx(); if (sfxOk()) whoosh(audio.currentTime, 400, 3000, 0.7, 0.13); }
+      if (t >= 1.9) {
+        eraser.flyV += 1500 * dt;
+        eraser.fly += eraser.flyV * dt;
+      }
+      eraser.x = eraser.baseX + eraser.fly;
+      if (eraser.x > W + 90) { eraser.mode = 'away'; eraser.awayFrom = score; eraser.h = {}; eraser.sayT = 0; }
+      return;
+    }
+    if (m === 'away') {
+      eraser.x = W + 200;
+      if (score - eraser.awayFrom >= awayMeters() && !hitSeq) startReturn();
+      return;
+    }
+    if (m === 'hint') {
+      eraser.hintT -= dt;
+      if (eraser.etype === 'front') {
+        // намёк: из-за правого края торчит макушка и летят катышки
+        eraser.x = W + eraserHalf() - 6;
+        eraser.face = -1;
+        if (Math.random() < dt * 14) spawnCrumbsAt(W + 2, -rand(120, 220));
+        if (eraser.hintT <= 0) { eraser.mode = 'enterFront'; eraserSay('back'); boingSound(); }
+      } else {
+        // намёк: над вершиной холма показывается макушка
+        eraser.x = eraser.crestWX - scroll;
+        const full = (ELEG + EH) * ES;
+        const peek = eraser.hintT > 0.15 ? -full + 9 + Math.sin(T * 9) * 1.5 : -full + 9 + (0.15 - eraser.hintT) / 0.15 * full;
+        eraser.yOff = peek;
+        eraser.onGround = true;
+        if (eraser.hintT <= 0) {
+          // выскакивает с вершины и спрыгивает вниз навстречу
+          eraser.yOff = 0; eraser.vy = -560; eraser.onGround = false;
+          eraser.mode = 'enterFront'; eraser.face = -1;
+          eraserSay('back'); boingSound();
+        }
+      }
+      return;
+    }
+    if (m === 'enterFront') {
+      // бежит навстречу — через него нужно перепрыгнуть
+      eraser.face = -1;
+      eraser.x -= (worldSpeed + 110) * dt;
+      const half = eraserHalf() * 0.8;
+      const hb = { l: eraser.x - half, r: eraser.x + half, t: groundY(eraser.x) - eraser.yOff - (EH + ELEG) * ES * 0.9, b: groundY(eraser.x) - eraser.yOff };
+      const pb = playerBox();
+      if (mode === 'running' && !hitSeq && !(invuln > 0) && overlap(pb, hb)) {
+        if (!player.onGround && player.vy > 0 && pb.b <= hb.t + 10) {
+          // прыгнула сверху — отскок, а Ластика сплющило
+          player.vy = BOUNCE_V; player.squash = 0.5; player.dbl = false;
+          if (!player.flipT) startFlip(0.55);
+          boingSound();
+          eraser.squash = 1;
+          eraserSay('stomp');
+        } else {
+          startHit({ type: 'eraser', passed: false });
+        }
+      }
+      // пробежал мимо — разворачивается и гонится сзади
+      if (eraser.x + eraserHalf() < player.x - 40) {
+        eraser.mode = 'chase';
+        eraser.face = 1;
+        eraser.dist = player.x - eraser.x;
+        eraser.off = 0; eraser.offTarget = 0;
+        eraser.chaseT = rand(20, 30);
+      }
+      return;
+    }
+  }
+
+  // возвращается случайно: сзади, спереди или из-за холма
+  function startReturn() {
+    const r = Math.random();
+    eraser.h = {};
+    eraser.yOff = 0; eraser.vy = 0; eraser.onGround = true; eraser.squash = 0;
+    eraser.gadget = null; eraser.trip = 0;
+    if (r < 0.34) {
+      eraser.mode = 'chase'; eraser.face = 1;
+      eraser.dist = 230; eraser.off = 0; eraser.offTarget = 0;   // вбегает слева
+      eraser.x = player.x - 230;
+      eraser.chaseT = rand(20, 30);
+      eraserSay('back'); boingSound();
+      return;
+    }
+    // ищем вершину холма в правой части экрана
+    // самая высокая точка рельефа справа — если она заметно выше остальной земли там, это «холм»
+    let best = null, lowest = -Infinity;
+    for (let x = W * 0.7; x < W - 24; x += 6) {
+      const y = groundY(x);
+      lowest = Math.max(lowest, y);
+      if (!best || y < best.y) best = { x, y };
+    }
+    if (best && lowest - best.y < 5) best = null;
+    eraser.mode = 'hint';
+    eraser.hintT = 1.0;
+    if (best && r < 0.67) {
+      eraser.etype = 'hill'; eraser.crestWX = best.x + scroll;
+      eraser.hintT = clamp(160 / Math.max(moveSpeed, 1), 0.35, 0.8);   // холм едет навстречу — намёк короче на скорости
+    }
+    else eraser.etype = 'front';
+  }
+
+  function spawnCrumbsAt(x, vx) {
+    if (crumbs.length >= 120) return;
+    crumbs.push({ x, y: groundY(x) + OFF - rand(6, 30), vx, vy: rand(-120, -40), rot: rand(0, 6.28), s: rand(0.7, 1.2), life: rand(1.2, 1.8) });
   }
 
   function startGadget() {
@@ -3109,6 +3251,10 @@
 
   // финал на последней жизни: Ластик подбегает и стирает Искорку
   function updateCatch(h, t) {
+    if (!h.catchFrom && eraser.mode !== 'chase') {
+      // на последней жизни Ластик примчится, даже если улетал
+      eraser.mode = 'chase'; eraser.face = 1; eraser.x = -60; eraser.yOff = 0; eraser.onGround = true; eraser.squash = 0;
+    }
     if (!h.catchFrom) {
       h.catchFrom = eraser.x;
       eraserSay('catch');
@@ -3268,15 +3414,24 @@
   }
 
   function drawEraser() {
-    if (eraser.x < -60 || eraser.x > W + 60) { drawEraserFx(); return; }
+    if (eraser.mode === 'away' || eraser.x < -60 || eraser.x > W + 60) { drawEraserFx(); return; }
     const g = eraser.gadget;
     const gy = groundY(eraser.x);
-    const bob = eraser.onGround && eraser.trip <= 0 ? Math.abs(Math.sin(eraser.step)) * 1.5 : 0;
+    const peek = eraser.mode === 'hint' && eraser.etype === 'hill';
+    const bob = eraser.onGround && eraser.trip <= 0 && !peek ? Math.abs(Math.sin(eraser.step)) * 1.5 : 0;
+    if (peek) {   // из-за холма видна только макушка: всё ниже земли обрезаем
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(eraser.x - 60, -OFF - 20, 120, gy + OFF + 19);
+      ctx.clip();
+    }
     ctx.save();
     ctx.translate(eraser.x, gy - bob - eraser.yOff);
     ctx.scale(ES, ES);
     inkScale = ES;
+    if (eraser.face < 0) ctx.scale(-1, 1);   // бежит навстречу
     ctx.rotate(0.08);   // бежит, наклонившись вперёд
+    if (eraser.mode === 'leave') drawLeave();
     if (eraser.trip > 0) {
       // споткнулся: падает носом вперёд, лежит, поднимается
       const tt = 1.2 - eraser.trip;
@@ -3304,7 +3459,14 @@
       }
       ctx.translate(0, -12);
     }
-    if (!(g && g.type === 'rocket' && g.boom)) drawEraserBody(eraser.squash + eraser.landSq * 0.6);
+    if (!(g && g.type === 'rocket' && g.boom)) {
+      if (eraser.mode === 'leave') {
+        // запрыгивает на ракету
+        const u = clamp((eraser.lt - 1.5) / 0.4, 0, 1);
+        ctx.translate(34 * u, -12 * u - Math.sin(Math.PI * u) * 14);
+      }
+      drawEraserBody(eraser.squash + eraser.landSq * 0.6);
+    }
 
     // ручки-щекоталки тянутся к Искорке
     if (eraser.tickle > 0) {
@@ -3399,6 +3561,7 @@
     }
     ctx.restore();
     inkScale = 1;
+    if (peek) ctx.restore();
 
     // реплика Ластика
     if (eraser.sayT > 0) {
@@ -3419,6 +3582,44 @@
       ctx.restore();
     }
     drawEraserFx();
+  }
+
+  // чертёж ракеты → настоящая ракета (в локальных координатах Ластика)
+  function drawLeave() {
+    const t = eraser.lt;
+    ctx.save();
+    ctx.translate(34, 0);
+    if (t < 1.2) {
+      const k = clamp(t / 1.1, 0, 1);
+      ctx.globalAlpha = 0.35 + k * 0.65;
+      ctx.setLineDash([3, 3]);
+      ctx.lineDashOffset = -T * 20;
+      ink(1.2, 0.9);
+      ctx.beginPath();
+      // контур ракеты появляется по частям
+      const pts = [[-30, -12], [14, -12], [26, -6], [14, 0], [-30, 0], [-30, -12]];
+      const n = Math.max(1, Math.floor(k * (pts.length - 1)) + 1);
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < Math.min(n + 1, pts.length); i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.stroke();
+      if (k > 0.6) { for (const wx of [-22, -6, 10]) { ctx.beginPath(); ctx.arc(wx, 3, 2.6, 0, Math.PI * 2); ctx.stroke(); } }
+      ctx.setLineDash([]);
+      // размерная линия и подпись, как на чертеже
+      if (k > 0.3) {
+        ink(0.9, 0.7);
+        ctx.beginPath(); ctx.moveTo(-30, -20); ctx.lineTo(26, -20); ctx.moveTo(-30, -23); ctx.lineTo(-30, -17); ctx.moveTo(26, -23); ctx.lineTo(26, -17); ctx.stroke();
+        write('РАКЕТА, ЧЕРТЁЖ №7', -2, -25, 7, 'center', 0.9);
+      }
+      // карандаш у кончика
+      const pi = Math.min(pts.length - 1, n);
+      ink(1.2);
+      ctx.beginPath(); ctx.moveTo(pts[pi][0], pts[pi][1]); ctx.lineTo(pts[pi][0] + 6, pts[pi][1] - 9); ctx.stroke();
+    } else {
+      if (t >= 1.9) ctx.translate(0, -Math.min(30, eraser.fly * 0.08));
+      drawRocket(t >= 1.9 ? 1.4 : 0);
+    }
+    ctx.restore();
+    if (t >= 1.9) ctx.translate(0, -Math.min(30, eraser.fly * 0.08));
   }
 
   function drawEraserFx() {
@@ -3471,6 +3672,12 @@
     if (!sfxOk()) return;
     const t = audio.currentTime;
     [980, 900, 1020, 880].forEach((f, i) => slide(t + i * 0.11, 'triangle', f * 1.08, f * 0.86, 0.08, 0.06, 30));
+  }
+  // злорадный хохот «ха-ха-ха»
+  function laughSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    [420, 390, 440, 380, 410].forEach((f, i) => slide(t + i * 0.13, 'sawtooth', f, f * 0.8, 0.1, 0.035, 20));
   }
   function rubSfx() { if (sfxOk()) noiseHit(audio.currentTime, 'bandpass', 1300, 0.7, 0.13, 0.1); }
 
