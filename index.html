@@ -105,7 +105,32 @@
     overflow-y: auto;
     touch-action: pan-y;
   }
-  #startScreen .panel { max-width: min(560px, 92%); padding-bottom: 0; }
+  #startScreen .panel { max-width: min(560px, 92%); }
+  /* меню стартового экрана */
+  .menu { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 6px; }
+  .menu[hidden] { display: none; }
+  .menu > .btn { margin-top: 0; min-width: min(250px, 100%); }
+  .menu-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .menu-row .btn { margin: 0; }
+  .menu-row .btn.ghost { font-size: clamp(15px, 3vw, 18px); padding: 4px 16px 5px; }
+  .menu h3 { margin-top: 2px; }
+  .lvl-note { font-size: 14px !important; margin: 0 !important; }
+  .rules-sheet { text-align: left; border: 1.5px dashed var(--line-faint); border-radius: 6px; padding: 2px 14px 10px; }
+  .rules-sheet h3 { margin-top: 10px; }
+  .rules-sheet .rules { font-size: clamp(14px, 2.6vw, 16px); }
+  .sticky-row { position: sticky; bottom: 0; width: 100%; padding: 10px 0 2px; background: linear-gradient(to bottom, rgba(75,98,182,0), var(--paper) 12px); }
+  .only-touch-list { display: none; }
+  .touch .only-touch-list { display: block; }
+  /* кнопка «Пропустить» во время обучения */
+  .skip-btn {
+    position: absolute;
+    left: 50%;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    background: rgba(58,77,151,0.75);
+
+  }
+  .skip-btn[hidden] { display: none; }
   /* кнопка «Начать» всегда видна, даже если правила прокручиваются */
   .start-actions {
     position: sticky;
@@ -283,39 +308,67 @@
 <div id="stage">
   <canvas id="game" aria-label="Игровое поле"></canvas>
 
+  <button class="sound-btn skip-btn" id="skipTutBtn" type="button" hidden>Пропустить обучение</button>
+
   <div class="overlay" id="startScreen">
     <div class="panel">
-      <h2>Искорка бежит</h2>
-      <h3>Правила</h3>
-      <ul class="rules">
-        <li>Искорка бежит сама. Ваша задача — пробежать как можно дальше.</li>
-        <li><b>Офисный хлам на земле</b> — стопки бумаг, блоки кода, кружки, мониторы, коробки, клавиатуры, кактусы и конусы — нужно перепрыгнуть.</li>
-        <li><b>Летающие помехи</b> — ошибки, жуки-баги, бумажные самолётики и часы-дедлайны — появляются после 180 очков. Через низкие прыгайте, под средними пригибайтесь, под высокими можно просто пробежать.</li>
-        <li><b>Обрывы, речки и сломанные мосты</b> — провалы в земле: их нужно перепрыгнуть, и Искорка пролетит над ними сальто — вперёд или назад, как получится. Не прыгнули — споткнётесь на краю.</li>
-        <li><b>Ластик</b> гонится сзади, роняя катышки, потом улетает на ракете и возвращается — сзади, спереди (через него надо перепрыгнуть) или из-за холма; перед этим мелькает макушка или летят катышки. Иногда он запускает дурацкие изобретения — обычно они бьют по нему же. С каждой потерянной жизнью он ближе; на последней — догонит и сотрёт.</li>
-        <li><b>Канат над провалом.</b> Прыгать не нужно: Искорка сама медленно пройдёт по канату, балансируя.</li>
-        <li><b>Батут.</b> Если приземлиться на препятствие сверху, Искорка отскочит и получит <b>+25 очков</b>.</li>
-        <li><b>Три запасные жизни.</b> Удар сбоку или снизу отнимает одну: Искорка отлетает, сидит оглушённая, встряхивается и бежит дальше. Когда запасные жизни кончатся, следующий удар заканчивает игру.</li>
-        <li><b>Уровни.</b> Каждые 1000 метров — новая локация: Пустыня, Горы, Город, Ночь, Железная дорога. С каждым уровнем Искорка бежит быстрее, а Ластик возвращается чаще. Проиграли — начинаете с начала уровня, до которого добежали. Открытые уровни сохраняются, их можно выбрать перед стартом.</li>
-        <li><b>Пустыня:</b> кактусы колются, на перекати-поле можно запрыгнуть и прокатиться, нарисованный тоннель — это просто скала, а где на земле тень — оттуда падает наковальня. <b>Горы:</b> валуны (низкие перепрыгнуть, скачущие — пригнуться), обрыв с табличкой «Осторожно!», динамит. <b>Город:</b> открытые люки, банановая кожура, падающее пианино. <b>Ночь:</b> летучие мыши (пригнуться), кратеры, а капканы и грабли видно только в луче фонарика. <b>Железная дорога:</b> под шлагбаумом пригнуться, через поезд — перепрыгнуть вовремя.</li>
-        <li>Очки идут за пройденное расстояние. Скорость постепенно растёт. Рекорд сохраняется в браузере.</li>
-      </ul>
-      <h3>Управление</h3>
-      <div class="keys only-keys">
-        <p><kbd>Пробел</kbd> или <kbd>↑</kbd> — прыжок (дольше держите — выше прыжок)</p>
-        <p><kbd>↓</kbd> — пригнуться, в воздухе — быстро упасть</p>
-        <p><kbd>Esc</kbd> или кнопка «Пауза» — пауза · <kbd>M</kbd> — звук</p>
-      </div>
-      <div class="only-touch">
-        <p>Тап по правой половине — прыжок<br>Удержание на левой половине — пригнуться<br>Свайп вниз — тоже пригнуться<br>Кнопка «Пауза» в углу — пауза</p>
-      </div>
-      <div class="start-actions">
-        <p class="lvl-title">Уровень</p>
-        <div class="levels" id="levelPick" role="group" aria-label="Выбор уровня"></div>
-        <button class="btn" id="startBtn" type="button">Начать</button>
+      <h2 id="menuTitle">Искорка бежит</h2>
+      <!-- главное меню -->
+      <div class="menu" id="mainMenu">
+        <button class="btn" id="newBtn" type="button">Новая игра</button>
+        <button class="btn" id="contBtn" type="button" hidden>Продолжить</button>
+        <div class="menu-row">
+          <button class="btn ghost" id="levelsBtn" type="button">Уровни</button>
+          <button class="btn ghost" id="rulesBtn" type="button">Правила</button>
+          <button class="btn ghost" id="tutBtn" type="button">Обучение</button>
+        </div>
         <button class="btn install-btn" id="installBtn" type="button" hidden>Установить</button>
         <p class="install-hint" id="iosHint" hidden>Чтобы установить игру: «Поделиться» → «На экран „Домой“»</p>
-        <p class="only-keys start-hint">или нажмите <kbd>Пробел</kbd></p>
+        <p class="only-keys start-hint" id="spaceHint">или нажмите <kbd>Пробел</kbd></p>
+      </div>
+      <!-- выбор уровня -->
+      <div class="menu" id="levelsView" hidden>
+        <div class="levels" id="levelPick" role="group" aria-label="Выбор уровня"></div>
+        <p class="lvl-note">Открытые уровни сохраняются. Новый уровень — каждые 1000 метров.</p>
+        <div class="menu-row">
+          <button class="btn" id="startBtn" type="button">Играть</button>
+          <button class="btn ghost" id="levelsBack" type="button">Назад</button>
+        </div>
+      </div>
+      <!-- правила -->
+      <div class="menu" id="rulesView" hidden>
+        <div class="rules-sheet">
+          <h3>Управление</h3>
+          <ul class="rules only-keys">
+            <li><kbd>Пробел</kbd> или <kbd>↑</kbd> — прыжок. Держите дольше — выше, нажмите ещё раз в воздухе — двойной прыжок.</li>
+            <li><kbd>↓</kbd> — пригнуться, в воздухе — быстро упасть.</li>
+            <li><kbd>Esc</kbd> — пауза, <kbd>M</kbd> — звук.</li>
+          </ul>
+          <ul class="rules only-touch-list">
+            <li>Тап справа — прыжок. Держите палец дольше — выше, тапните ещё раз в воздухе — двойной прыжок.</li>
+            <li>Тап слева или свайп вниз — пригнуться.</li>
+            <li>Кнопка «Пауза» в углу — пауза.</li>
+          </ul>
+          <h3>Жизни</h3>
+          <ul class="rules">
+            <li>Три запасные жизни. Любой удар отнимает одну — с мультяшной реакцией, и Искорка бежит дальше.</li>
+            <li>Приземлились на препятствие сверху — отскок и <b>+25 очков</b>.</li>
+          </ul>
+          <h3>Ластик</h3>
+          <ul class="rules">
+            <li>Гонится сзади, потом улетает на ракете и возвращается — сзади, спереди (через него надо перепрыгнуть) или из-за холма.</li>
+            <li>С каждой потерянной жизнью он ближе, а на последней — догонит и сотрёт.</li>
+          </ul>
+          <h3>Уровни</h3>
+          <ul class="rules">
+            <li>Каждые 1000 метров — новая локация: Пустыня, Горы, Город, Ночь, Железная дорога. У каждой свои препятствия.</li>
+            <li>С каждым уровнем быстрее, и Ластик возвращается чаще. Проиграли — начинаете с начала уровня, до которого добежали.</li>
+          </ul>
+        </div>
+        <div class="menu-row sticky-row">
+          <button class="btn" id="tutAgainBtn" type="button">Пройти обучение заново</button>
+          <button class="btn ghost" id="rulesBack" type="button">Назад</button>
+        </div>
       </div>
     </div>
   </div>
@@ -595,7 +648,7 @@
   let runTalk = 8;   // через сколько секунд бега сказать что-нибудь просто так
 
   function say(kind, prio, chance, cooldown) {
-    if (Math.random() > chance) return;
+    if (tut || Math.random() > chance) return;   // в уроке говорит выноска
     const now = performance.now() / 1000;
     const busy = speech.t > 0 && speech.prio >= prio;
     if (busy || now - lastSpoke < cooldown) return;
@@ -709,20 +762,45 @@
   }
 
   // к выбору уровня после проигрыша
+  // ---------- Стартовый экран: меню, уровни, правила ----------
+  const VIEWS = { main: 'mainMenu', levels: 'levelsView', rules: 'rulesView' };
+  let menuView = 'main';
+  function showView(v) {
+    menuView = v;
+    for (const k in VIEWS) document.getElementById(VIEWS[k]).hidden = k !== v;
+    document.getElementById('menuTitle').textContent = { main: 'Искорка бежит', levels: 'Уровни', rules: 'Правила' }[v];
+    if (v === 'levels') renderLevelPick();
+    startScreen.querySelector('.panel').scrollTop = 0;
+  }
+  function renderMenu() {
+    const cont = document.getElementById('contBtn');
+    cont.hidden = unlocked <= 1;   // «Продолжить» — только когда есть прогресс
+    cont.textContent = 'Продолжить: уровень ' + unlocked;
+    document.getElementById('spaceHint').innerHTML = 'или нажмите <kbd>Пробел</kbd> — ' + (unlocked > 1 ? 'продолжить' : 'новая игра');
+  }
+  // Пробел или Enter на стартовом экране
+  function menuPrimary() {
+    if (menuView === 'levels') startGame(pickLevel);
+    else if (menuView === 'main') startGame(unlocked > 1 ? unlocked : 1);
+  }
+
   function toMenu() {
     mode = 'ready';
     pickLevel = Math.min(curLvl, unlocked);
     reset(pickLevel);
-    renderLevelPick();
+    renderMenu();
+    showView('levels');
     overScreen.classList.add('hidden');
     pauseScreen.classList.add('hidden');
     startScreen.classList.remove('hidden');
     pauseBtn.disabled = true;
   }
 
-  function startGame(level) {
+  function startGame(level, noTut) {
     // после проигрыша — с начала уровня, до которого добежали; со стартового экрана — выбранный
     if (!level) level = mode === 'over' ? curLvl : pickLevel;
+    if (!noTut && !tutDone) { startTutorial(level); return; }   // в первый раз — сначала урок
+    if (!noTut && tut) { tut = null; skipTutBtn.hidden = true; }
     reset(level);
     showLevelSign(level);
     mode = 'running';
@@ -736,7 +814,7 @@
 
   function jumpPress() {
     ensureAudio();
-    if (mode === 'ready') { startGame(); doJump(); return; }
+    if (mode === 'ready') { menuPrimary(); return; }
     if (mode === 'paused') { resume(); return; }
     if (mode === 'over') {
       if (performance.now() - overAt > 450) startGame();
@@ -784,6 +862,7 @@
     player.fastFall = false;
     player.squash = -0.36; player.squashV = 0;
     player.flutter = 0.42;
+    tutEvent('double');
     kickRays(3, 5);
     puffCloud(player.x, player.bottom + 2, 4, true);
     doubleSfx();
@@ -845,8 +924,9 @@
       e.preventDefault();
       setDuck(true);
     } else if (e.code === 'Escape' || e.code === 'KeyP') {
-      if (mode === 'running') pause(); else resume();
-    } else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && mode === 'ready') {
+      if (mode === 'ready') { if (menuView !== 'main') showView('main'); }
+      else if (mode === 'running') pause(); else resume();
+    } else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && mode === 'ready' && menuView === 'levels') {
       e.preventDefault();
       setPickLevel(pickLevel + (e.code === 'ArrowLeft' ? -1 : 1));
     } else if (e.code === 'Enter' && mode !== 'running') {
@@ -908,7 +988,16 @@
   stage.addEventListener('pointerup', endPointer);
   stage.addEventListener('pointercancel', endPointer);
 
-  document.getElementById('startBtn').addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
+  const onClick = (id, fn) => document.getElementById(id).addEventListener('click', (e) => { e.stopPropagation(); e.currentTarget.blur(); fn(); });
+  onClick('startBtn', () => startGame(pickLevel));
+  onClick('newBtn', () => startGame(1));
+  onClick('contBtn', () => startGame(unlocked));
+  onClick('levelsBtn', () => showView('levels'));
+  onClick('rulesBtn', () => showView('rules'));
+  onClick('levelsBack', () => showView('main'));
+  onClick('rulesBack', () => showView('main'));
+  onClick('tutBtn', () => startTutorial(unlocked));
+  onClick('tutAgainBtn', () => startTutorial(unlocked));
   document.getElementById('restartBtn').addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
   document.getElementById('menuBtn').addEventListener('click', (e) => { e.stopPropagation(); toMenu(); });
 
@@ -1442,12 +1531,12 @@
     }
     if (!running) return;
 
-    // скорость растёт со временем
-    elapsed += dt;
+    // скорость растёт со временем (в уроке — спокойный бег)
+    if (!tut) elapsed += dt;
     // очень плавный разгон; потолок держит игру проходимой
     lvlMul += (levelMul(curLvl) - lvlMul) * Math.min(1, dt * 0.5);   // на новом уровне плавно прибавляет
     const maxSpeed = 720 * speedFactor() * Math.min(1.35, 1 + 0.07 * (curLvl - 1));
-    speed = Math.min(maxSpeed, baseSpeed * lvlMul + elapsed * 1.27);
+    speed = tut ? baseSpeed * 0.8 : Math.min(maxSpeed, baseSpeed * lvlMul + elapsed * 1.27);
     // на подъёме чуть медленнее, на спуске быстрее
     moveSpeed = speed * (player.onGround ? clamp(1 + player.slope * 1.5, 0.78, 1.25) : 1);
     // на канате — осторожно и медленно
@@ -1483,8 +1572,8 @@
       }
     }
 
-    dist += moveSpeed * dt;
-    trav += moveSpeed * dt;
+    if (tut) updateTut(dt);
+    if (!tut) { dist += moveSpeed * dt; trav += moveSpeed * dt; }
     const newScore = Math.floor(dist / 40);
     if (Math.floor(newScore / 100) > Math.floor(score / 100)) flash = 1.2;
     const L = levelAtD(trav);
@@ -1558,7 +1647,7 @@
 
     // препятствия
     sinceSpawn += moveSpeed * dt;
-    if (sinceSpawn >= nextGap) {
+    if (sinceSpawn >= nextGap && !tut) {
       const width = spawn();
       if (width < 0) sinceSpawn = nextGap - 20;   // ждём, пока дорога впереди освободится
       else {
@@ -1658,6 +1747,7 @@
   }
 
   function bounceOff(o, hb) {
+    tutEvent('bounce');
     player.bottom = hb.t + 3;
     player.vy = BOUNCE_V;
     player.fastFall = false;
@@ -2652,7 +2742,8 @@
     trap: drawTrap, rake: drawRake, barrier: drawBarrier, train: drawTrain,
   };
   function drawFlyer(o) {
-    if (o.kind === 'bat') drawBat(o);
+    if (o.kind === 'bird') drawBirdie(o.x, o.y, 2.6, 1);
+    else if (o.kind === 'bat') drawBat(o);
     else if (o.kind === 'bug') drawBug(o);
     else if (o.kind === 'plane') drawPlane(o);
     else if (o.kind === 'clock') drawClock(o);
@@ -3144,6 +3235,7 @@
     if (showScore) write('СЧЁТ ' + pad(score || 0), W - 18 - safe.r, 30, 19, 'right', 1);
     write('РЕКОРД ' + pad(hi), W - 18 - safe.r, 46, 14, 'right', 0.7);
     ctx.restore();
+    drawTut();
     drawLevelSign();
   }
 
@@ -3157,6 +3249,177 @@
     ctx.translate(-cx, -o.gy);
     DRAW[o.type](o);
     ctx.restore();
+  }
+
+  // ---------- Обучение: шаг за шагом, следующий — только когда действие выполнено ----------
+  const TUT_KEY = 'claude-spark-runner-tut';
+  let tutDone = false;
+  try { tutDone = localStorage.getItem(TUT_KEY) === '1'; } catch (e) { /* нет хранилища */ }
+  let tut = null;   // { step, t, level, pop, nudge, air, minB, dbl, again }
+  const TUT_STEPS = [
+    { text: 'Привет! Я Искорка. Тапни справа, чтобы прыгнуть!', side: 'right', tap: 'ТАП', key: 'ПРОБЕЛ', hint: 'Пробел или ↑ — прыжок' },
+    { text: 'Держи палец дольше — прыгну выше!', side: 'right', tap: 'ДЕРЖИ', key: 'ДЕРЖИ ПРОБЕЛ', hint: 'Держите Пробел подольше' },
+    { text: 'А теперь тапни ещё раз в воздухе — двойной прыжок!', side: 'right', tap: 'ТАП + ТАП', key: 'ПРОБЕЛ + ПРОБЕЛ', hint: 'Пробел, и ещё раз в воздухе' },
+    { text: 'Тапни слева, чтобы пригнуться!', side: 'left', tap: 'ДЕРЖИ', key: '↓', hint: 'Стрелка ↓ — пригнуться' },
+    { text: 'Прыгай на препятствия сверху — я отскочу!', side: 'box' },
+    { text: 'Берегись Ластика! Удачи!' },
+  ];
+  const TUT_PRAISE = ['Отлично!', 'Супер!', 'Здорово!', 'Ура!', 'Класс!'];
+  const skipTutBtn = document.getElementById('skipTutBtn');
+
+  function startTutorial(level) {
+    startGame(level, true);
+    levelSign = null;
+    tut = { step: 0, t: 0, level, pop: 0, nudge: null, air: false, minB: 0, dbl: false, again: 0 };
+    eraser.mode = 'away'; eraser.awayFrom = Infinity; eraser.x = W + 200;   // Ластик появится после урока
+    invuln = 1e9;   // в уроке удары не считаются
+    skipTutBtn.hidden = false;
+  }
+
+  function endTutorial() {
+    if (!tut) return;
+    const level = tut.level;
+    tut = null;
+    tutDone = true;
+    try { localStorage.setItem(TUT_KEY, '1'); } catch (e) { /* нет хранилища */ }
+    skipTutBtn.hidden = true;
+    skipTutBtn.blur();
+    startGame(level, true);   // урок закончился — начинается игра
+  }
+  skipTutBtn.addEventListener('click', (e) => { e.stopPropagation(); endTutorial(); });
+
+  function tutNext() {
+    popups.push({ x: player.x - 40, y: player.bottom - 135, t: 0.9, text: pick(TUT_PRAISE), size: 22 });
+    fanfareSfx();
+    tut.step++; tut.t = 0; tut.pop = 0; tut.nudge = null; tut.dbl = false; tut.again = 0;
+    for (let i = obstacles.length - 1; i >= 0; i--) if (obstacles[i].tut) obstacles.splice(i, 1);
+  }
+  const tutNudge = (text) => { tut.nudge = { text, t: 2.4 }; };
+
+  // события игры, на которые реагирует урок
+  function tutEvent(kind, val) {
+    if (!tut) return;
+    const s = tut.step;
+    if (kind === 'double') tut.dbl = true;
+    if (kind === 'land') {
+      if (s === 0) tutNext();
+      else if (s === 1) { if (val > 105) tutNext(); else tutNudge('Выше! Держи палец подольше'); }
+      else if (s === 2) { if (tut.dbl) tutNext(); else tutNudge('Тапни ещё раз, пока я в воздухе!'); }
+    }
+    if (kind === 'bounce' && s === 4) tutNext();
+  }
+
+  function updateTut(dt) {
+    tut.t += dt;
+    tut.pop = Math.min(1, tut.pop + dt * 5);
+    if (tut.nudge) { tut.nudge.t -= dt; if (tut.nudge.t <= 0) tut.nudge = null; }
+    invuln = 1e9;
+    scrollOff = scroll + PLAYER_X - trav;   // путь в уроке не идёт — локация не меняется
+    // высота прыжка: от земли до верхней точки
+    if (!player.onGround) { tut.air = true; tut.minB = Math.min(tut.minB, player.bottom - groundY(player.x)); }
+    else if (tut.air) { tut.air = false; tutEvent('land', -tut.minB); tut.minB = 0; }
+    const s = tut.step;
+    const mine = obstacles.find((o) => o.tut);
+    if (s === 3) {
+      // пролетает птичка: пригнулась, пока та над головой, — шаг пройден
+      if (!mine) {
+        tut.again -= dt;
+        if (tut.again <= 0) obstacles.push({ type: 'error', kind: 'bird', tut: true, x: W + 30, y: groundY(W) - 42, alt: 42, w: 34, h: 26, phase: 0, extra: 0.15 });
+      } else {
+        if (Math.abs(mine.x - player.x) < 34 && player.duck && player.onGround) mine.ducked = true;
+        if (mine.x < player.x - 50) {
+          if (mine.ducked) tutNext();
+          else { obstacles.splice(obstacles.indexOf(mine), 1); tut.again = 0.6; tutNudge('Пригнись, когда птичка подлетит!'); }
+        }
+      }
+    } else if (s === 4) {
+      // одна коробка: нужно приземлиться на неё сверху
+      if (!mine) {
+        tut.again -= dt;
+        if (tut.again <= 0) addGround({ type: 'boxes', tut: true, x: W + 30, w: 40, h: 28, n: 1, seed: Math.random() * 1000 });
+      } else if (mine.x + mine.w < player.x - 50) {
+        obstacles.splice(obstacles.indexOf(mine), 1);
+        tut.again = 0.5;
+        tutNudge('Прыгни и приземлись прямо на коробку!');
+      }
+    } else if (s === 5 && tut.t > 2.4) endTutorial();
+  }
+
+  // ---------- Обучение: выноски и мигающие стрелки ----------
+  function bigArrow(x1, y1, x2, y2, a) {
+    ink(2.6, a);
+    ctx.beginPath(); sLine(x1, y1, x2, y2); ctx.stroke();
+    const ang = Math.atan2(y2 - y1, x2 - x1);
+    ctx.beginPath();
+    ctx.moveTo(x2 - Math.cos(ang - 0.5) * 14, y2 - Math.sin(ang - 0.5) * 14);
+    ctx.lineTo(x2, y2);
+    ctx.lineTo(x2 - Math.cos(ang + 0.5) * 14, y2 - Math.sin(ang + 0.5) * 14);
+    ctx.stroke();
+  }
+
+  function drawTut() {
+    if (!tut) return;
+    const st = TUT_STEPS[tut.step];
+    const blink = Math.sin(T * 7) > -0.3 ? 1 : 0.35;
+    // половина экрана, куда нажимать: пунктирная рамка, стрелка и «круги» от касания
+    if (st.side === 'right' || st.side === 'left') {
+      const right = st.side === 'right';
+      const x0 = right ? W / 2 + 6 : 16 + safe.l, x1 = right ? W - 16 - safe.r : W / 2 - 6;
+      const top = 150, bot = VH - 18;
+      ink(1.3, 0.55 * blink);
+      ctx.setLineDash([6, 6]);
+      roundRect(x0, top, x1 - x0, bot - top, 10);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      write(right ? 'ПРАВАЯ ПОЛОВИНА' : 'ЛЕВАЯ ПОЛОВИНА', (x0 + x1) / 2, top + 16, 13, 'center', 0.7);
+      const cx = right ? x0 + (x1 - x0) * 0.62 : x0 + (x1 - x0) * 0.32, cy = top + (bot - top) * 0.34;
+      for (let i = 0; i < 3; i++) {
+        const k = (T * 0.9 + i / 3) % 1;
+        ink(1.4, (1 - k) * 0.8);
+        ctx.beginPath(); ctx.arc(cx, cy, 6 + k * 30, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fillStyle = C.line; ctx.fill();
+      write(isTouch ? st.tap : st.key, cx, cy + 46, 17, 'center', blink);
+      if (right) bigArrow(x0 + 4, top - 18, cx - 26, cy - 22, blink);
+      else bigArrow(x1 - 4, top - 18, cx + 26, cy - 22, blink);
+    } else if (st.side === 'box') {
+      const o = obstacles.find((q) => q.tut);
+      if (o && o.x < W - 10) {
+        const cx = o.x + o.w / 2, ty = OFF + o.y;
+        bigArrow(cx, ty - 66, cx, ty - 10, blink);
+        write('СВЕРХУ!', cx, ty - 74, 16, 'center', blink);
+      }
+    }
+    // выноска-реплика Искорки сверху
+    ctx.save();
+    const pop = tut.pop < 1 ? 0.6 + 0.55 * Math.sin(tut.pop * Math.PI * 0.75) : 1;
+    let size = 19;
+    ctx.font = size + 'px ' + FONT;
+    let tw = ctx.measureText(st.text).width;
+    if (tw > W - 80) { size = Math.floor(size * (W - 80) / tw); ctx.font = size + 'px ' + FONT; tw = ctx.measureText(st.text).width; }
+    const hint = !isTouch && st.hint ? st.hint : '';
+    const bw = tw + 36, bh = hint ? 54 : 38;
+    const bx = W / 2 - bw / 2, by = 84 + safe.t;
+    ctx.translate(W / 2, by + bh / 2);
+    ctx.scale(pop, pop);
+    ctx.translate(-W / 2, -(by + bh / 2));
+    // хвостик к Искорке
+    const hx = player.x, hy = OFF + player.bottom - 80;
+    const tx = clamp(hx, bx + 20, bx + bw - 20);
+    ink(1.8);
+    ctx.beginPath();
+    ctx.moveTo(tx - 9, by + bh - 1); ctx.lineTo(hx + 6, Math.max(by + bh + 14, hy - 10)); ctx.lineTo(tx + 9, by + bh - 1);
+    paper(); ctx.stroke();
+    roundRect(bx, by, bw, bh, 10);
+    paper(); ctx.stroke();
+    ink(1, 0.5);
+    roundRect(bx + 4, by + 4, bw - 8, bh - 8, 7);
+    ctx.stroke();
+    write('ШАГ ' + (tut.step + 1) + ' / ' + TUT_STEPS.length, bx + bw - 8, by - 6, 12, 'right', 0.75);
+    write(st.text, W / 2, by + 20, size, 'center', 1, 'middle');
+    if (hint) write(hint, W / 2, by + 40, 13, 'center', 0.7, 'middle');
+    ctx.restore();
+    if (tut.nudge) write(tut.nudge.text, W / 2, by + bh + 22, 15, 'center', Math.min(1, tut.nudge.t / 0.4));
   }
 
   // ---------- Локации: препятствия и мультяшные реакции ----------
@@ -5727,6 +5990,7 @@
   initScenery();
   reset();
   renderLevelPick();
+  renderMenu();
   requestAnimationFrame(frame);
 })();
 </script>
