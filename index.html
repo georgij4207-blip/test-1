@@ -111,7 +111,7 @@
     position: sticky;
     bottom: 0;
     padding: 4px 0 clamp(14px, 3vw, 24px);
-    background: linear-gradient(to bottom, rgba(75,98,182,0), var(--paper) 30%);
+    background: linear-gradient(to bottom, rgba(75,98,182,0), var(--paper) 14px);
   }
   .panel h2 {
     margin: 0 0 6px;
@@ -164,6 +164,24 @@
   .btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 rgba(20,30,70,0.4); }
   .btn:focus-visible { outline: 2px dashed var(--line); outline-offset: 4px; }
   .keys { margin-top: 8px; }
+  /* выбор открытых уровней */
+  .levels { display: flex; flex-wrap: wrap; gap: 6px 8px; justify-content: center; margin: 2px 0 0; }
+  .lvl-btn {
+    appearance: none;
+    border: 1.5px solid var(--line-soft);
+    background: transparent;
+    color: var(--line);
+    font: inherit;
+    font-size: clamp(14px, 2.7vw, 16px);
+    padding: 2px 10px 3px;
+    border-radius: 6px 9px 6px 8px;
+    cursor: pointer;
+  }
+  .lvl-btn[aria-pressed="true"] { background: var(--line); color: var(--paper-deep); border-color: var(--line); }
+  .lvl-btn:disabled { opacity: 0.4; border-style: dashed; cursor: default; }
+  .lvl-btn:focus-visible { outline: 2px dashed var(--line); outline-offset: 2px; }
+  .lvl-title { margin: 0 0 2px !important; padding-top: 14px; font-size: 15px !important; letter-spacing: 0.08em; text-transform: uppercase; }
+  .btn.ghost { background: transparent; color: var(--line); margin-left: 6px; }
   kbd {
     display: inline-block;
     min-width: 1.6em;
@@ -278,6 +296,8 @@
         <li><b>Канат над провалом.</b> Прыгать не нужно: Искорка сама медленно пройдёт по канату, балансируя.</li>
         <li><b>Батут.</b> Если приземлиться на препятствие сверху, Искорка отскочит и получит <b>+25 очков</b>.</li>
         <li><b>Три запасные жизни.</b> Удар сбоку или снизу отнимает одну: Искорка отлетает, сидит оглушённая, встряхивается и бежит дальше. Когда запасные жизни кончатся, следующий удар заканчивает игру.</li>
+        <li><b>Уровни.</b> Каждые 1000 метров — новая локация: Пустыня, Горы, Город, Ночь, Железная дорога. С каждым уровнем Искорка бежит быстрее, а Ластик возвращается чаще. Проиграли — начинаете с начала уровня, до которого добежали. Открытые уровни сохраняются, их можно выбрать перед стартом.</li>
+        <li><b>Пустыня:</b> кактусы колются, на перекати-поле можно запрыгнуть и прокатиться, нарисованный тоннель — это просто скала, а где на земле тень — оттуда падает наковальня. <b>Горы:</b> валуны (низкие перепрыгнуть, скачущие — пригнуться), обрыв с табличкой «Осторожно!», динамит. <b>Город:</b> открытые люки, банановая кожура, падающее пианино. <b>Ночь:</b> летучие мыши (пригнуться), кратеры, а капканы и грабли видно только в луче фонарика. <b>Железная дорога:</b> под шлагбаумом пригнуться, через поезд — перепрыгнуть вовремя.</li>
         <li>Очки идут за пройденное расстояние. Скорость постепенно растёт. Рекорд сохраняется в браузере.</li>
       </ul>
       <h3>Управление</h3>
@@ -290,6 +310,8 @@
         <p>Тап по правой половине — прыжок<br>Удержание на левой половине — пригнуться<br>Свайп вниз — тоже пригнуться<br>Кнопка «Пауза» в углу — пауза</p>
       </div>
       <div class="start-actions">
+        <p class="lvl-title">Уровень</p>
+        <div class="levels" id="levelPick" role="group" aria-label="Выбор уровня"></div>
         <button class="btn" id="startBtn" type="button">Начать</button>
         <button class="btn install-btn" id="installBtn" type="button" hidden>Установить</button>
         <p class="install-hint" id="iosHint" hidden>Чтобы установить игру: «Поделиться» → «На экран „Домой“»</p>
@@ -309,7 +331,9 @@
       </ol>
       <p class="big">Счёт: <b id="finalScore">0</b></p>
       <p id="recordLine">Рекорд: <b id="finalHi">0</b></p>
+      <p id="overLevel"></p>
       <button class="btn" id="restartBtn" type="button">Ещё раз</button>
+      <button class="btn ghost" id="menuBtn" type="button">Уровни</button>
     </div>
   </div>
 
@@ -387,8 +411,42 @@
   }
   // высота земли в мировой координате: крупные холмы + мелкие бугорки
   const terrain = (wx) => (vnoise(wx / 360) - 0.5) * 38 + (vnoise(wx / 150 + 50) - 0.5) * 14;
+  // ---------- Уровни: каждые 1000 метров — новая локация ----------
+  const LEVEL_LEN = 1000 * 40;   // 1000 «метров» счёта в пикселях пути
+  const LOCS = [
+    { name: 'Пустыня', amp: 1.0 },
+    { name: 'Горы', amp: 1.45 },
+    { name: 'Город', amp: 0.12 },
+    { name: 'Ночь', amp: 0.75 },
+    { name: 'Железная дорога', amp: 0.3 },
+  ];
+  const LVL_KEY = 'claude-spark-runner-level';
+  function loadLevel() {
+    try { return Math.max(1, parseInt(localStorage.getItem(LVL_KEY), 10) || 1); } catch (e) { return 1; }
+  }
+  function saveLevel(v) {
+    try { localStorage.setItem(LVL_KEY, String(v)); } catch (e) { /* хранилище недоступно */ }
+  }
+  let unlocked = loadLevel();   // самый дальний открытый уровень
+  let pickLevel = unlocked;     // выбранный на стартовом экране
+  let trav = 0;                 // пройденный путь без бонусов — по нему считаются уровни
+  let scrollOff = 0;            // связь прокрутки земли с путём: путь в точке экрана = sx + scroll - scrollOff
+  let curLvl = 1;
+  const locIdx = (L) => (Math.max(1, L) - 1) % LOCS.length;
+  const levelAtD = (d) => Math.max(1, Math.floor(d / LEVEL_LEN) + 1);
+  const worldD = (sx) => sx + scroll - scrollOff;
+  const locAt = (sx) => locIdx(levelAtD(worldD(sx)));
+  const levelName = (L) => 'Уровень ' + L + ': ' + LOCS[locIdx(L)].name;
+  // высота холмов зависит от локации; на границе плавно перетекает
+  function ampAt(sx) {
+    const d = worldD(sx), L = levelAtD(d), f = d - (L - 1) * LEVEL_LEN;
+    const a = LOCS[locIdx(L)].amp;
+    if (L < 2 || f > 500) return a;
+    const k = f / 500, p = LOCS[locIdx(L - 1)].amp;
+    return p + (a - p) * k * k * (3 - 2 * k);
+  }
   // y поверхности под экранной координатой x (земля прокручивается вместе со scroll)
-  const groundY = (sx) => GROUND - 4 + terrain(sx + scroll) * 0.9;
+  const groundY = (sx) => GROUND - 4 + terrain(sx + scroll) * 0.9 * ampAt(sx);
   const slopeAt = (sx) => (groundY(sx + 3) - groundY(sx - 3)) / 6;   // >0 — спуск, <0 — подъём
 
   // ---------- DOM ----------
@@ -528,6 +586,8 @@
     rope: ['Тихо-тихо…', 'Не смотреть вниз!', 'Баланс!', 'Ой-ой-ой…', 'Шажок за шажком', 'Я канатоходец!'],
     flip: ['Сальто!', 'Оп-ля-ля!', 'Акробатика!', 'Кувырок!', 'Хоба!', 'Йу-ху!'],
     revive: ['Я в порядке!', 'Ещё живой!', 'Не считается!', 'Пф, царапина!', 'Перезапуск!', 'Ой! Но я цел!'],
+    level: ['Ого, где это я?', 'Новая локация!', 'Дальше — больше!', 'Поехали!', 'Красота-то какая!'],
+    ride: ['Йи-ха!', 'Карета подана!', 'Поехали!', 'Прокачусь!'],
   };
   const lastLine = {};
   const speech = { text: '', t: 0, dur: 0, prio: 0 };
@@ -543,6 +603,11 @@
     let text = pick(LINES[kind]);
     while (LINES[kind].length > 1 && text === lastLine[kind]) text = pick(LINES[kind]);
     lastLine[kind] = text;
+    sayText(text, prio);
+  }
+  // реплика без выбора из списка (мультяшные реакции: «Ай!», «Кхе!»)
+  function sayText(text, prio = 3) {
+    const now = performance.now() / 1000;
     speech.text = text;
     popSfx();
     speech.dur = speech.t = 1.15;
@@ -552,10 +617,15 @@
 
   function speedFactor() { return Math.max(0.78, Math.min(1, W / 800)); }
 
-  function reset() {
+  function reset(level = pickLevel) {
     baseSpeed = 380 * speedFactor();
     speed = baseSpeed;
-    elapsed = 0; dist = 0; score = 0;
+    curLvl = level;
+    trav = (level - 1) * LEVEL_LEN;
+    scrollOff = scroll + PLAYER_X - trav;
+    lvlMul = levelMul(level);
+    levelSign = null; pendingKind = null;
+    elapsed = 0; dist = trav; score = Math.floor(dist / 40);
     obstacles = []; particles = [];
     player.bottom = groundY(player.x); player.vy = 0; player.onGround = true;
     player.slope = 0; player.tilt = 0;
@@ -568,6 +638,8 @@
     player.spin = 0; player.launch = 0;
     player.duck = false; player.jumpHeld = false; player.fastFall = false;
     player.squash = 0; player.spread = 0;
+    player.ride = null; player.noPhys = false; player.hidden = false; player.soot = 0; player.needles = 0;
+    resetPose();
     sinceSpawn = 0; nextGap = W * 0.6; flash = 0; shake = 0; newRecord = false;
     speech.t = 0; lastSpoke = -10; runTalk = rand(6, 10);
     lastVy = 0; lastAir = false;
@@ -594,8 +666,65 @@
   }
 
   // ---------- Управление ----------
-  function startGame() {
-    reset();
+  // скорость растёт с каждым уровнем
+  const levelMul = (L) => Math.min(1.5, 1 + 0.1 * (L - 1));
+  let lvlMul = 1, levelSign = null;
+
+  function showLevelSign(L) {
+    levelSign = { t: 0, text: levelName(L), clunk: false };
+    fanfareSfx();
+    if (sfxOk()) slide(audio.currentTime + 0.1, 'sine', 1500, 500, 0.35, 0.05);   // табличка падает сверху
+  }
+  // добежала до следующей тысячи метров — новая локация, без остановки
+  function enterLevel(L) {
+    curLvl = L;
+    if (L > unlocked) { unlocked = L; saveLevel(L); }
+    showLevelSign(L);
+    say('level', 2, 1, 0);
+  }
+
+  function renderLevelPick() {
+    const box = document.getElementById('levelPick');
+    box.textContent = '';
+    for (let L = 1; L <= Math.max(LOCS.length, unlocked); L++) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'lvl-btn';
+      b.textContent = L + '. ' + LOCS[locIdx(L)].name;
+      b.disabled = L > unlocked;
+      if (b.disabled) b.title = 'Откроется, когда добежите до него';
+      b.setAttribute('aria-pressed', String(L === pickLevel));
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        b.blur();
+        setPickLevel(L);
+      });
+      box.appendChild(b);
+    }
+  }
+  function setPickLevel(L) {
+    pickLevel = clamp(L, 1, unlocked);
+    if (mode === 'ready') reset(pickLevel);   // на фоне — выбранная локация
+    renderLevelPick();
+  }
+
+  // к выбору уровня после проигрыша
+  function toMenu() {
+    mode = 'ready';
+    pickLevel = Math.min(curLvl, unlocked);
+    reset(pickLevel);
+    renderLevelPick();
+    overScreen.classList.add('hidden');
+    pauseScreen.classList.add('hidden');
+    startScreen.classList.remove('hidden');
+    pauseBtn.disabled = true;
+  }
+
+  function startGame(level) {
+    // после проигрыша — с начала уровня, до которого добежали; со стартового экрана — выбранный
+    if (!level) level = mode === 'over' ? curLvl : pickLevel;
+    reset(level);
+    showLevelSign(level);
     mode = 'running';
     pauseBtn.disabled = false;
     startSfx();
@@ -717,6 +846,9 @@
       setDuck(true);
     } else if (e.code === 'Escape' || e.code === 'KeyP') {
       if (mode === 'running') pause(); else resume();
+    } else if ((e.code === 'ArrowLeft' || e.code === 'ArrowRight') && mode === 'ready') {
+      e.preventDefault();
+      setPickLevel(pickLevel + (e.code === 'ArrowLeft' ? -1 : 1));
     } else if (e.code === 'Enter' && mode !== 'running') {
       e.preventDefault();
       jumpPress();
@@ -778,6 +910,7 @@
 
   document.getElementById('startBtn').addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
   document.getElementById('restartBtn').addEventListener('click', (e) => { e.stopPropagation(); startGame(); });
+  document.getElementById('menuBtn').addEventListener('click', (e) => { e.stopPropagation(); toMenu(); });
 
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
   window.addEventListener('blur', pause);
@@ -1089,6 +1222,20 @@
     river: ['РЕЧКА (МОКРО)', 'РЫБА ЕСТЬ', 'БРОДА НЕТ'],
     bridge: ['МОСТ (ПОЧТИ)', 'РЕМОНТ С 2019', 'НА СВОЙ РИСК'],
     rope: ['КАНАТ (НАДЁЖНЫЙ?)', 'ИДТИ МЕДЛЕННО', 'ЦИРК УЕХАЛ, КАНАТ ОСТАЛСЯ'],
+    weed: ['ПЕРЕКАТИ-ПОЛЕ (ТАКСИ)', 'МОЖНО ПРОКАТИТЬСЯ'],
+    tunnel: ['ТОННЕЛЬ (НАРИСОВАН)', 'СОВСЕМ КАК НАСТОЯЩИЙ', 'КРАСКА ЕЩЁ СОХНЕТ'],
+    anvil: ['ТЕНЬ (ПОДОЗРИТЕЛЬНАЯ)', 'ПОГОДА: НАКОВАЛЬНИ', 'ACME, 1 ТОННА'],
+    piano: ['ТЕНЬ (МУЗЫКАЛЬНАЯ)', 'ДОСТАВКА ПИАНИНО', 'ДО-МИ-СОЛЬ'],
+    roll: ['ВАЛУН (КАТИТСЯ)', 'КАМНЕПАД ПО РАСПИСАНИЮ'],
+    hop: ['ВАЛУН (ПРЫГАЕТ)', 'ПРИГНИСЬ!'],
+    edge: ['ОБРЫВ (НЕ СМОТРЕТЬ ВНИЗ)', 'ГРАВИТАЦИЯ ВКЛЮЧИТСЯ ЧЕРЕЗ СЕКУНДУ'],
+    tnt: ['ДИНАМИТ (ГОРИТ)', 'НЕ НАСТУПАТЬ', 'ФИТИЛЬ КОРОТКИЙ'],
+    manhole: ['ЛЮК (ОТКРЫТ)', 'РЕМОНТ КАНАЛИЗАЦИИ', 'ВЫХОД — СОСЕДНИЙ ЛЮК'],
+    banana: ['БАНАНОВАЯ КОЖУРА', 'СКОЛЬЗКО!'],
+    bat: ['ЛЕТУЧАЯ МЫШЬ', 'ПИ-ПИ-ПИ (УЛЬТРАЗВУК)'],
+    crater: ['КРАТЕР', 'ТУТ БЫЛ МЕТЕОРИТ'],
+    barrier: ['ШЛАГБАУМ', 'ПРОЕЗД ЗАКРЫТ'],
+    train: ['ПОЕЗД (ПО РАСПИСАНИЮ)', 'ЭКСПРЕСС ACME', 'ТУ-ТУ!'],
   };
   let noteNo = 0;
   function maybeNote(o) {
@@ -1124,6 +1271,11 @@
 
   function spawn() {
     const x = W + 30;
+    // препятствия локации — в основном; офисный хлам тоже иногда попадается
+    if (pendingKind || (trav - (curLvl - 1) * LEVEL_LEN > 1500 || curLvl > 1) && Math.random() < 0.72) {
+      const w = spawnLoc(locAt(x), x);
+      if (w !== null) return w;
+    }
     const canFly = score > 180;
     const r = Math.random();
 
@@ -1187,6 +1339,8 @@
 
   function hitbox(o) {
     if (o.type === 'error') return { l: o.x - 11, r: o.x + 11, t: o.y - 11, b: o.y + 11 };
+    if (o.type === 'barrier') return { l: o.x, r: o.x + o.w - 6, t: o.gy - 51, b: o.gy - 39 };   // только стрела
+    if (o.type === 'boulder' || o.type === 'weed') return { l: o.x + 4, r: o.x + o.w - 4, t: o.y + 4, b: o.y + o.h - 2 };
     return { l: o.x + 3, r: o.x + o.w - 3, t: o.y + 3, b: o.y + o.h };
   }
 
@@ -1272,7 +1426,9 @@
     player.tilt += (tiltTarget - player.tilt) * Math.min(1, dt * 8);
     if (eraser.tickle > 0) player.tilt = Math.sin(T * 30) * 0.13 + Math.sin(T * 17) * 0.06;   // ёрзает от щекотки
 
+    if (levelSign && mode !== 'paused') { levelSign.t += dt; if (levelSign.t > 3.6) levelSign = null; }
     if (mode === 'ready') {
+      scrollOff = scroll + PLAYER_X - trav;   // стоим в начале выбранного уровня
       player.bottom = groundY(player.x);
       player.step += dt * 7;
       updateRays(dt);
@@ -1289,20 +1445,22 @@
     // скорость растёт со временем
     elapsed += dt;
     // очень плавный разгон; потолок держит игру проходимой
-    const maxSpeed = 720 * speedFactor();
-    speed = Math.min(maxSpeed, baseSpeed + elapsed * 1.27);
+    lvlMul += (levelMul(curLvl) - lvlMul) * Math.min(1, dt * 0.5);   // на новом уровне плавно прибавляет
+    const maxSpeed = 720 * speedFactor() * Math.min(1.35, 1 + 0.07 * (curLvl - 1));
+    speed = Math.min(maxSpeed, baseSpeed * lvlMul + elapsed * 1.27);
     // на подъёме чуть медленнее, на спуске быстрее
     moveSpeed = speed * (player.onGround ? clamp(1 + player.slope * 1.5, 0.78, 1.25) : 1);
     // на канате — осторожно и медленно
-    const rope = player.onGround ? ropeAt(player.x) : null;
+    const rope = player.onGround && !player.ride ? ropeAt(player.x) : null;
     if (rope && player.onRope !== rope) say('rope', 1, 1, 0);
     player.onRope = rope || null;
     player.ropeK = (player.ropeK ?? 1) + ((rope ? 0.32 : 1) - (player.ropeK ?? 1)) * Math.min(1, dt * 4);
     moveSpeed *= player.ropeK;
+    if (player.ride) moveSpeed *= 1.15;   // на перекати-поле — с ветерком
     if (hitSeq) {
       hitSeq.t += dt;
-      // на отлёте мир замедляется, пока сидит оглушённая — стоит
-      moveSpeed *= hitSeq.t < HIT.knock ? 0.25 : 0;
+      // на отлёте мир замедляется, пока сидит оглушённая — стоит; у мультяшных реакций — свой темп
+      moveSpeed *= hitSeq.kind ? hitSeq.speedK : hitSeq.t < HIT.knock ? 0.25 : 0;
       updateHit(dt);
       if (mode !== 'running') return;
     } else if (player.spin > 0) {
@@ -1326,9 +1484,12 @@
     }
 
     dist += moveSpeed * dt;
+    trav += moveSpeed * dt;
     const newScore = Math.floor(dist / 40);
     if (Math.floor(newScore / 100) > Math.floor(score / 100)) flash = 1.2;
-    if (Math.floor(newScore / 500) > Math.floor(score / 500)) { say('milestone', 2, 1, 0); fanfareSfx(); }
+    const L = levelAtD(trav);
+    if (L > curLvl) enterLevel(L);
+    else if (Math.floor(newScore / 500) > Math.floor(score / 500) && !levelSign) { say('milestone', 2, 1, 0); fanfareSfx(); }
     score = newScore;
     flash = Math.max(0, flash - dt);
     invuln = Math.max(0, invuln - dt);
@@ -1339,7 +1500,9 @@
     if (player.windup > 0) { player.windup -= dt; if (player.windup <= 0) takeoff(); }
     player.buffer = Math.max(0, player.buffer - dt);
     player.flutter = Math.max(0, player.flutter - dt);
-    if (!player.onGround) {
+    if (player.noPhys) {
+      // реакция сама ведёт Искорку (висит над обрывом, падает в люк)
+    } else if (!player.onGround) {
       const g = gravityFor(player.vy, player.fastFall);
       player.vy += g * dt;
       player.bottom += player.vy * dt;
@@ -1357,6 +1520,8 @@
         puffCloud(player.x, gy, 6, true);
         if (player.buffer > 0) { player.buffer = 0; player.windup = 0.03; }   // буфер: прыгает сразу при касании
       }
+    } else if (player.ride) {
+      player.bottom = player.ride.gy - player.ride.h + 3;   // едет на перекати-поле
     } else {
       player.bottom = surfaceY(player.x);   // бежит по поверхности (или идёт по канату), повторяя рельеф
     }
@@ -1395,9 +1560,12 @@
     sinceSpawn += moveSpeed * dt;
     if (sinceSpawn >= nextGap) {
       const width = spawn();
-      sinceSpawn = 0;
-      const minGap = speed * 0.72 + width + 70;
-      nextGap = minGap + Math.random() * speed * 0.7;
+      if (width < 0) sinceSpawn = nextGap - 20;   // ждём, пока дорога впереди освободится
+      else {
+        sinceSpawn = 0;
+        const minGap = speed * 0.72 + width + 70;
+        nextGap = minGap + Math.random() * speed * 0.7;
+      }
     }
 
     player.coyote = 0;
@@ -1406,35 +1574,42 @@
       const o = obstacles[i];
       if (o.type === 'error') {
         o.x -= moveSpeed * (1 + o.extra) * dt;
-        o.phase += dt * 9;
+        o.phase += dt * (o.kind === 'bat' ? 16 : 9);
         o.y = groundY(o.x) - o.alt + Math.sin(o.phase * 0.5) * 2;
-      } else {
+      } else if (player.ride !== o) {
         o.x -= moveSpeed * dt;
       }
-      if (o.x + (o.w || 30) < -40) { obstacles.splice(i, 1); continue; }
+      if (TICK[o.type]) TICK[o.type](o, dt);
+      if (o.gone || o.x + (o.span || o.w || 30) < -40) { obstacles.splice(i, 1); continue; }
       if (o.type === 'gap') {
         o.gy = groundY(o.x + o.w / 2); o.y = o.gy;
-        const m = o.kind === 'bridge' ? o.w * 0.24 - 4 : 8;   // на обломках моста стоять можно
+        const m = o.kind === 'bridge' ? o.w * 0.24 - 4 : o.kind === 'manhole' ? 7 : 8;   // на обломках моста стоять можно
         const over = player.x > o.x + m && player.x < o.x + o.w - m;
         if (o.kind === 'rope') {
           if (!o.passed && o.x + o.w < player.x - 20) o.passed = true;
           continue;
         }
-        if (over && !player.onGround && !player.flipT) startFlip(0.42);   // прыгнула заранее — крутит сальто над провалом
-        if (over && player.onGround && !hitSeq && !(invuln > 0)) {
-          // койот-время: ещё долю секунды бежит по воздуху и может прыгнуть
+        if (over && !player.onGround && !player.flipT && !hitSeq) startFlip(0.42);   // прыгнула заранее — крутит сальто над провалом
+        if (over && player.onGround && !hitSeq && !(invuln > 0) && !player.ride) {
+          // койот-время: ещё долю секунды бежит по воздуху и может прыгнуть (в люк — сразу)
+          const coyote = o.kind === 'manhole' ? 0 : COYOTE;
           o.overT = (o.overT || 0) + dt;
-          player.coyote = Math.max(0, COYOTE - o.overT);
-          if (o.overT > COYOTE && player.windup <= 0) { startHit(o); break; }
+          player.coyote = Math.max(0, coyote - o.overT);
+          if (o.overT > coyote && player.windup <= 0) { startHit(o); break; }
         }
         if (!o.passed && o.x + o.w < player.x - 20) o.passed = true;
         continue;
       }
+      if (player.ride === o) continue;
       const hb = hitbox(o);
       if (overlap(pb, hb)) {
         // падение сверху на препятствие — отскок, как от батута
-        const fromAbove = !player.onGround && player.vy > 0 && prevBottom - 3 <= hb.t + 4;
-        if (fromAbove) { bounceOff(o, hb); pb = playerBox(); continue; }
+        const fromAbove = !player.onGround && player.vy > 0 && prevBottom - 3 <= hb.t + (o.type === 'weed' ? 24 : 4) && !hitSeq;
+        // на перекати-поле можно запрыгнуть и прокатиться
+        if (fromAbove && o.type === 'weed') { startRide(o); pb = playerBox(); continue; }
+        // на кожуру, капкан, грабли и динамит не отскакивают — наступают; падающее ловит сверху
+        const springy = !STEP_ON[o.type] && !(o.type === 'drop' && o.state !== 'landed');
+        if (fromAbove && springy) { bounceOff(o, hb); pb = playerBox(); continue; }
         if (hitSeq || invuln > 0) { o.passed = true; continue; }
         startHit(o); break;
       }
@@ -1450,6 +1625,18 @@
           else if (o.jumped) say('jump', 0, 0.3, 3);
         }
       }
+    }
+
+    // катание на перекати-поле: спрыгнула — оно катится дальше; через пару секунд рассыпается
+    if (player.ride) {
+      player.ride.rideT += dt;
+      if (!player.onGround || hitSeq) endRide(false);
+      else if (player.ride.rideT > 3.2) endRide(true);
+    }
+    // чумазость после взрыва и иголки после кактуса понемногу проходят
+    if (!hitSeq) {
+      player.soot = Math.max(0, (player.soot || 0) - dt * 0.35);
+      player.needles = Math.max(0, (player.needles || 0) - dt);
     }
 
     // иногда болтает на бегу
@@ -1489,13 +1676,23 @@
     }
   }
 
-  const FALL_NAMES = { cliff: 'Свалиться в обрыв.', river: 'Плюхнуться в речку.', bridge: 'Провалиться на сломанном мосту.' };
+  const FALL_NAMES = { cliff: 'Свалиться в обрыв.', river: 'Плюхнуться в речку.', bridge: 'Провалиться на сломанном мосту.', crater: 'Упасть в кратер.' };
   const HIT_NAMES = {
     papers: 'стопку бумаг', code: 'блок кода', err: 'летающую ошибку', warn: 'летающую ошибку',
     eraser: 'Ластика', bug: 'жука-бага', plane: 'бумажный самолётик', clock: 'часы-дедлайн', mug: 'кружку кофе',
     monitor: 'монитор', boxes: 'коробки', keyboard: 'клавиатуру', cactus: 'кактус', cone: 'конус',
+    weed: 'перекати-поле', boulder: 'валун', bat: 'летучую мышь', barrier: 'шлагбаум', train: 'поезд',
+  };
+  // как закончился забег — для списка «План» на экране проигрыша
+  const PLAN_TEXT = {
+    cactus: 'Уколоться о кактус.', tunnel: 'Врезаться в нарисованный тоннель.', anvil: 'Попасть под наковальню.',
+    piano: 'Попасть под пианино.', edge: 'Повисеть над обрывом — и вниз.', tnt: 'Подорваться на динамите.',
+    manhole: 'Провалиться в люк.', banana: 'Поскользнуться на банановой кожуре.', crater: 'Упасть в кратер.',
+    trap: 'Наступить в капкан.', rake: 'Наступить на грабли.', train: 'Не успеть перепрыгнуть поезд.',
   };
   function startHit(o) {
+    const rk = REACT[o.kind] || REACT[o.type];
+    if (rk) { startReact(o, rk); return; }   // у препятствий локаций — своя мультяшная реакция
     const last = lives === 0;
     if (!last) lives--;
     hitSeq = { t: 0, o, last, nextKick: 0 };
@@ -1521,6 +1718,7 @@
 
   function updateHit(dt) {
     const h = hitSeq, t = h.t;
+    if (h.kind) { updateReact(h, dt); return; }
     // 1. отлёт назад
     if (t < HIT.knock) {
       const k = t / HIT.knock;
@@ -1597,9 +1795,11 @@
     recordLine.innerHTML = newRecord
       ? '<span class="record">Новый рекорд! ✳</span>'
       : 'Рекорд: <b>' + hi + '</b>';
-    document.getElementById('planHit').textContent = o && o.type === 'gap'
+    document.getElementById('planHit').textContent = o && (PLAN_TEXT[o.kind] || PLAN_TEXT[o.type]) || (o && o.type === 'gap'
       ? FALL_NAMES[o.kind]
-      : 'Врезаться в ' + (o && (HIT_NAMES[o.kind] || HIT_NAMES[o.type]) || 'препятствие') + '.';
+      : 'Врезаться в ' + (o && (HIT_NAMES[o.kind] || HIT_NAMES[o.type]) || 'препятствие') + '.');
+    document.getElementById('overLevel').textContent = 'Добежала до: ' + levelName(curLvl);
+    document.getElementById('restartBtn').textContent = 'Ещё раз с уровня ' + curLvl;
     setTimeout(sadTromboneSfx, 250);
     setTimeout(() => { if (mode === 'over') overScreen.classList.remove('hidden'); }, 350);
   }
@@ -1783,6 +1983,16 @@
       ctx.stroke();
       return;
     }
+    if (dead === 'down' || dead === 'front') {
+      // висит над обрывом: сначала смотрит вниз, потом — прямо на зрителя
+      ctx.fillStyle = C.line;
+      ctx.beginPath(); ctx.ellipse(x, y, rx * 1.15, ry * 1.15, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = C.ink;
+      ctx.beginPath();
+      ctx.arc(x + (dead === 'down' ? rx * 0.15 : 0), y + (dead === 'down' ? ry * 0.55 : 0), Math.min(rx, ry) * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
     if (dead) {
       // оглушён: глаза слегка закатились — зрачок уехал вверх под веко и чуть покачивается
       const ex = 3, ey = 3.6;
@@ -1879,16 +2089,17 @@
   }
 
   function drawPlayer() {
-    if (player.erased) return;   // стёрта Ластиком
+    if (player.erased || player.hidden) return;   // стёрта Ластиком или провалилась под землю
     const dead = mode === 'over';
-    const caught = !!hitSeq && hitSeq.last && hitSeq.t >= HIT.knock;   // сидит и ждёт Ластика
+    const std = !!hitSeq && !hitSeq.kind;   // обычная сцена удара (у препятствий локаций — свои реакции)
+    const caught = std && hitSeq.last && hitSeq.t >= HIT.knock;   // сидит и ждёт Ластика
     const airborne = !player.onGround;
     const ducking = player.duck && player.onGround;
-    const stunned = !!hitSeq && !hitSeq.last && hitSeq.t >= HIT.knock && hitSeq.t < HIT.stun;   // сидит оглушённая
-    const shaking = !!hitSeq && !hitSeq.last && hitSeq.t >= HIT.stun;
+    const stunned = std && !hitSeq.last && hitSeq.t >= HIT.knock && hitSeq.t < HIT.stun;   // сидит оглушённая
+    const shaking = std && !hitSeq.last && hitSeq.t >= HIT.stun;
     const moving = ((mode === 'running' && !airborne) || mode === 'ready') && !hitSeq;
 
-    const knocked = !!hitSeq && hitSeq.t < HIT.knock;   // летит назад
+    const knocked = std && hitSeq.t < HIT.knock;   // летит назад
     const sitting = ((stunned || caught) && !airborne) || dead;
     // подъём: 0 — сидит, 1 — стоит; с лёгким упругим перелётом в конце
     let rise = 1;
@@ -1910,11 +2121,13 @@
       sy *= 1 + st; sx *= 1 - st * 0.55;
     }
     sx *= 1 + Math.abs(player.lean || 0) * 0.35;   // на рывке тянется вперёд
+    sx *= player.rsx ?? 1; sy *= player.rsy ?? 1;   // мультяшная реакция: блин, расплющило о скалу…
     const fast = !airborne && !hitSeq && mode === 'running' && moveSpeed > 470 * speedFactor();
 
     // длина ножек «резиновая»: сжимаются при приземлении, вытягиваются в прыжке, садятся почти в ноль
     let legLen = (ducking ? 6 : LEG) * (1 - player.squash * 0.6);
     legLen = legLen * (1 - sitAmt) + 3 * sitAmt;
+    legLen *= player.rLeg ?? 1;
     const bob = moving ? Math.abs(Math.sin(player.step)) * 2.2 : 0;
     const hipOff = R * 0.3 * sy;
     const cy = player.bottom - legLen - hipOff - bob;
@@ -1934,8 +2147,8 @@
 
     // наклон и увеличение всего тела вокруг ступней
     ctx.save();
-    ctx.translate(x, player.bottom);
-    ctx.rotate(player.tilt + (player.lean || 0));   // наклон по рельефу + инерция «на резинке»
+    ctx.translate(x, player.bottom - (player.lying ? 14 : 0));
+    ctx.rotate(player.tilt + (player.lean || 0) + (player.rtilt || 0));   // наклон по рельефу + инерция «на резинке» + реакция
     ctx.scale(PS, PS);
     ctx.translate(-x, -player.bottom);
     inkScale = PS;
@@ -1964,7 +2177,15 @@
       if (fast && !hitSeq) break;   // на большой скорости вместо ножек — размытое колесо
       const hx = x + (side ? 4.5 : -4.5) * sx;
       let fx, fy, bend;   // bend — насколько колено выгнуто вперёд
-      if (knocked && airborne) {
+      if (player.legRun) {
+        // бежит по воздуху (над обрывом, подскочив от кактуса)
+        const ph = player.step * 1.6 + side * Math.PI;
+        fx = hx + Math.sin(ph) * legLen * 0.8; fy = hipY + legLen * 0.85 - Math.max(0, Math.cos(ph)) * 4;
+        bend = 4;
+      } else if (player.stiff || player.lying) {
+        // стоит столбом или лежит: ножки прямые
+        fx = hx + (side ? 2 : -2); fy = player.bottom; bend = 0.6;
+      } else if (knocked && airborne) {
         // падает: ножки вытянуты вперёд
         fx = hx + 13 + side * 2; fy = hipY + 2 - side * 3; bend = -2 + Math.sin(T * 30 + side) * 1.5;
       } else if (sitting) {
@@ -2022,6 +2243,9 @@
     ctx.scale(sx, sy);
     const sp = player.spread;
     const sway = dead ? 0 : Math.sin(player.step * 2) * 0.03;
+    // после динамита — чумазая
+    const sootA = Math.min(1, player.soot || 0) * 0.85;
+    const sooty = () => { if (sootA > 0) { ctx.fillStyle = 'rgba(22,26,52,' + sootA.toFixed(3) + ')'; ctx.fill(); } };
     ink(1.5);
     for (const ray of RAYS) {
       const spring = raySprings[ray.i];
@@ -2031,12 +2255,38 @@
       const len = R * ray.l * down * (1 + sp * 0.22) + (moving ? Math.sin(player.step * 2 + ray.i) * 0.6 : 0);
       rayPath(ang, R * (0.12 + sp * 0.32), len * (1 + spring.s), R * 0.15, R * 0.075 * (1 - spring.s * 0.4), spring.a);
       paper(C.body);
+      sooty();
       ctx.stroke();
     }
     ctx.beginPath();
     ctx.arc(0, 0, R * (0.42 - sp * 0.04), 0, Math.PI * 2);
     paper(C.body);
+    sooty();
     ctx.stroke();
+    // дымок с кончиков лучиков
+    if (sootA > 0.15) {
+      ink(1, sootA);
+      ctx.beginPath();
+      for (const ray of RAYS) {
+        if (Math.sin(ray.a) > -0.2) continue;
+        const tx = Math.cos(ray.a) * R * ray.l, ty = Math.sin(ray.a) * R * ray.l;
+        const ph = T * 6 + ray.i * 2;
+        ctx.moveTo(tx, ty - 2);
+        ctx.bezierCurveTo(tx + Math.sin(ph) * 4, ty - 6, tx - Math.sin(ph) * 4, ty - 10, tx + Math.sin(ph + 1) * 3, ty - 15);
+      }
+      ctx.stroke();
+    }
+    // иголки от кактуса
+    if (player.needles > 0) {
+      ink(1, Math.min(1, player.needles));
+      ctx.beginPath();
+      for (let i = 0; i < 9; i++) {
+        const a = -2.6 + i * 0.55, r0 = R * (0.38 + (i % 3) * 0.12);
+        ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+        ctx.lineTo(Math.cos(a + 0.12) * (r0 + 5), Math.sin(a + 0.12) * (r0 + 5));
+      }
+      ctx.stroke();
+    }
     ctx.restore();
 
     // глазки
@@ -2047,12 +2297,20 @@
     if (airborne && player.blinkT <= 0) ry = 3.8;
     if (caught) ry = 4.2;   // глаза круглые от ужаса
     if (eraser.tickle > 0) ry = 1.3;   // зажмурилась от щекотки
-    const dizzy = dead || stunned;
-    const eyeMode = stunned || dead ? 'rolled' : '';   // без спиралек: глаза закатились
+    const dizzy = dead || stunned || player.lying;
+    const eyeMode = stunned || dead || player.lying ? 'rolled' : (player.look || '');   // без спиралек: глаза закатились
     if (dizzy) drawDizzy(x, cy - R * 1.3, false);   // задняя половина хоровода — за головой
     drawEye(x - 1, eyeY, 2.5, ry, eyeMode);
     drawEye(x + 7, eyeY, 2.5, ry, eyeMode);
     if (dizzy) drawDizzy(x, cy - R * 1.3, true);    // передняя — поверх
+    // ночью — фонарик в руке
+    if (mode === 'running' && locAt(x) === 3) {
+      ink(1.2);
+      sRect(x + R * 0.62 * sx, cy + 3, 8, 5);
+      paper(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + R * 0.62 * sx + 8, cy + 2); ctx.lineTo(x + R * 0.62 * sx + 11, cy + 1); ctx.lineTo(x + R * 0.62 * sx + 11, cy + 9); ctx.lineTo(x + R * 0.62 * sx + 8, cy + 8); ctx.closePath();
+      ctx.fillStyle = C.line; ctx.fill();
+    }
 
     // линии скорости: тянутся за искоркой на большой скорости
     if (fast) {
@@ -2390,9 +2648,12 @@
   const DRAW = {
     papers: (o) => drawPapers(o), code: (o) => drawCode(o), mug: drawMug, monitor: drawMonitor,
     boxes: drawBoxes, keyboard: drawKeyboard, cactus: drawCactus, cone: drawCone,
+    weed: drawWeed, tunnel: drawTunnel, drop: drawDrop, boulder: drawBoulder, tnt: drawTnt, banana: drawBanana,
+    trap: drawTrap, rake: drawRake, barrier: drawBarrier, train: drawTrain,
   };
   function drawFlyer(o) {
-    if (o.kind === 'bug') drawBug(o);
+    if (o.kind === 'bat') drawBat(o);
+    else if (o.kind === 'bug') drawBug(o);
     else if (o.kind === 'plane') drawPlane(o);
     else if (o.kind === 'clock') drawClock(o);
     else drawError(o);
@@ -2455,6 +2716,8 @@
   }
 
   function drawGap(o) {
+    if (o.kind === 'crater') { drawCrater(o); return; }
+    if (o.kind === 'manhole') { drawManhole(o); return; }
     const w = o.w;
     const y0 = groundY(o.x), y1 = groundY(o.x + w);
     const bottom = H + 6;
@@ -2484,7 +2747,7 @@
     ctx.stroke();
 
     const top = Math.max(y0, y1);
-    if (o.kind === 'cliff' || o.kind === 'rope') {
+    if (o.kind === 'cliff' || o.kind === 'rope' || o.kind === 'edge') {
       // глубина: пунктиры уходят вниз, сыплются камешки
       ink(1, 0.35);
       ctx.setLineDash([3, 5]);
@@ -2777,31 +3040,21 @@
     // мир сдвинут вниз: над ним остаётся небо под заголовок и счёт
     ctx.save();
     ctx.translate(0, OFF);
-    drawSun(t);
-
-    // параллакс: дальние облака, горы, ближние облака, холмы
-    for (const c of cloudsFar) drawCloud(c, 0.45);
-    drawRidge(0.45, 70, GROUND - 14, 0.0045, 0.04, true);
-    for (const c of cloudsNear) drawCloud(c, 0.85);
-    drawRidge(0.55, 34, GROUND - 14, 0.009, 0.14, false);
-    drawRidge(0.5, 14, GROUND - 16, 0.016, 0.32, false);
+    // параллакс своей локации; у границы — две сцены и флажок с номером уровня
+    const segs = segments();
+    for (const sg of segs) inSeg(sg, () => drawScenery(sg.loc, t));
 
     drawGround();
-    for (const o of obstacles) if (o.type === 'gap') drawGap(o);
+    for (const sg of segs) inSeg(sg, () => drawGroundDetail(sg.loc));
+    for (const sg of segs) if (sg.edge) drawSeam(sg);
+    for (const o of obstacles) if (o.type === 'gap') { drawGap(o); if (o.kind === 'edge') drawCaution(o); }
 
-    for (const o of obstacles) {
-      if (o.type === 'error') { drawFlyer(o); continue; }
-      if (o.type === 'gap') continue;
-      // наземные стоят на склоне: поворачиваем вокруг точки опоры
-      const cx = o.x + o.w / 2;
-      ctx.save();
-      ctx.translate(cx, o.gy);
-      ctx.rotate(o.ang);
-      ctx.translate(-cx, -o.gy);
-      DRAW[o.type](o);
-      ctx.restore();
-    }
-    for (const o of obstacles) drawNote(o);
+    // наковальня на блинчике и грабли у лба рисуются поверх Искорки
+    const front = hitSeq && hitSeq.o && (hitSeq.o.onPlayer || hitSeq.kind === 'rake') ? hitSeq.o : null;
+    for (const o of obstacles) if (o.type !== 'gap' && !o.hidden && o !== front) drawObstacle(o);
+    for (const o of obstacles) if (!o.hidden) drawNote(o);
+    // ночь: темно, видно только то, что в луче фонарика
+    for (const sg of segs) if (sg.loc === 3) inSeg(sg, () => drawNight(t));
 
     // пыль — белые кружочки и раздувающиеся облачка
     for (const p of particles) {
@@ -2825,12 +3078,24 @@
       ctx.closePath();
       ctx.fillStyle = C.line; ctx.fill();
       ink(2); ctx.stroke();
-      write('БОНК!', 0, 1, 12, 'center', 1, 'middle');
-      ctx.fillStyle = C.ink; ctx.font = '12px ' + FONT; ctx.fillText('БОНК!', 0, 1);
+      const word = impact.text || 'БОНК!';
+      if (impact.big) ctx.scale(1.6, 1.6);
+      ctx.fillStyle = C.ink; ctx.font = '12px ' + FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(word, 0, 1);
       ctx.restore();
     }
 
-    if (hitSeq && hitSeq.last && hitSeq.t >= HIT.knock) {
+    if (hitSeq && hitSeq.kind === 'manhole' && !player.hidden) {
+      // проваливается в люк: ниже земли видно только внутри шахты
+      const o = hitSeq.o;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(-20, -OFF - 20, W + 40, groundY(player.x) + OFF + 18);
+      ctx.rect(o.x + 2, 0, o.w - 4, H + 20);
+      ctx.clip();
+      drawPlayer();
+      ctx.restore();
+    } else if (hitSeq && !hitSeq.kind && hitSeq.last && hitSeq.t >= HIT.knock) {
       // финал: Ластик стирает Искорку — пропадает всё, по чему он уже прошёлся
       ctx.save();
       ctx.beginPath();
@@ -2841,6 +3106,7 @@
     } else {
       drawPlayer();
     }
+    if (front) drawObstacle(front);
 
     for (const p of popups) {
       ctx.globalAlpha = Math.min(1, p.t / 0.4);
@@ -2877,6 +3143,1317 @@
     const showScore = !(flash > 0 && Math.floor(flash * 8) % 2 === 0);
     if (showScore) write('СЧЁТ ' + pad(score || 0), W - 18 - safe.r, 30, 19, 'right', 1);
     write('РЕКОРД ' + pad(hi), W - 18 - safe.r, 46, 14, 'right', 0.7);
+    ctx.restore();
+    drawLevelSign();
+  }
+
+  // наземные стоят на склоне: поворачиваем вокруг точки опоры
+  function drawObstacle(o) {
+    if (o.type === 'error') { drawFlyer(o); return; }
+    const cx = o.x + o.w / 2;
+    ctx.save();
+    ctx.translate(cx, o.gy);
+    ctx.rotate(o.ang || 0);
+    ctx.translate(-cx, -o.gy);
+    DRAW[o.type](o);
+    ctx.restore();
+  }
+
+  // ---------- Локации: препятствия и мультяшные реакции ----------
+  const LOC_POOL = [
+    [['cactus', 3], ['weed', 2], ['tunnel', 1.5], ['anvil', 1.5]],            // пустыня
+    [['roll', 2], ['hop', 1.6], ['edge', 1.5], ['tnt', 2]],                   // горы
+    [['manhole', 2], ['banana', 2], ['piano', 1.6]],                          // город
+    [['bat', 2.4], ['crater', 1.5], ['trap', 1.6], ['rake', 1.6]],            // ночь
+    [['barrier', 2.4], ['train', 2]],                                         // железная дорога
+  ];
+  const MOVERS = { roll: 1, hop: 1, weed: 1, train: 1 };
+  const STEP_ON = { banana: 1, trap: 1, rake: 1, tnt: 1 };   // на них наступают, а не отскакивают
+  const DROP_ALT = 300;      // с какой высоты падают наковальня и пианино
+  const TRAIN_V = 190;       // поезд едет навстречу быстрее земли
+  let pendingKind = null;    // движущееся препятствие ждёт, пока дорога освободится
+
+  function wpick(list) {
+    let sum = 0;
+    for (const [, w] of list) sum += w;
+    let r = Math.random() * sum;
+    for (const [k, w] of list) if ((r -= w) <= 0) return k;
+    return list[0][0];
+  }
+
+  // возвращает ширину, -1 (подождать) или null (взять обычное препятствие)
+  function spawnLoc(loc, x) {
+    const k = pendingKind || wpick(LOC_POOL[loc]);
+    pendingKind = null;
+    // катящееся и едущее не должно наезжать на то, что уже стоит впереди
+    if (MOVERS[k] && !obstacles.every((o) => o.x + (o.span || o.w || 30) < player.x - 20)) { pendingKind = k; return -1; }
+    const seed = Math.random() * 1000;
+    const night = loc === 3;
+    let o = null;
+    switch (k) {
+      case 'cactus': o = { type: 'cactus', x, w: rand(26, 30), h: rand(40, 54), seed }; break;
+      case 'weed': o = { type: 'weed', x, w: 38, h: 38, seed, rot: 0, ph: 0, vx: -110 }; break;   // ветер катит его туда же, куда бежит Искорка
+      case 'tunnel': o = { type: 'tunnel', x, w: rand(54, 62), h: rand(58, 66), seed }; break;
+      case 'anvil': o = { type: 'drop', kind: 'anvil', x, w: 40, h: 26, seed, alt: DROP_ALT, state: 'wait', lead: rand(170, 260) }; break;
+      case 'piano': o = { type: 'drop', kind: 'piano', x, w: 58, h: 46, seed, alt: DROP_ALT, state: 'wait', lead: rand(190, 270) }; break;
+      case 'roll': o = { type: 'boulder', kind: 'roll', x, w: 36, h: 36, seed, rot: 0, vx: 90, alt: 0 }; break;
+      case 'hop': o = { type: 'boulder', kind: 'hop', x, w: 30, h: 30, seed, rot: 0, vx: 70, alt: 0 }; break;
+      case 'tnt': o = { type: 'tnt', x, w: 22, h: 28, seed }; break;
+      case 'banana': o = { type: 'banana', x, w: 24, h: 9, seed }; break;
+      case 'trap': o = { type: 'trap', x, w: 32, h: 10, seed, hidden: night }; break;
+      case 'rake': o = { type: 'rake', x, w: 70, h: 7, seed, hidden: night, sw: 0 }; break;
+      case 'barrier': o = { type: 'barrier', x, w: 76, h: 58, seed }; break;
+      case 'train': o = { type: 'train', x: x + (speed + TRAIN_V) * 1.1, w: 96, h: 50, seed, vx: TRAIN_V, rot: 0, chug: 0, smoke: 0 }; break;
+      case 'bat': {
+        const alt = Math.random() < 0.75 ? 42 : 16;   // в основном — пригнуться, изредка низко — перепрыгнуть
+        const b = { type: 'error', kind: 'bat', x, y: groundY(x) - alt, alt, w: 34, h: 26, phase: Math.random() * 6, extra: rand(0.04, 0.1) };
+        obstacles.push(b); maybeNote(b);
+        return 34;
+      }
+      case 'edge': case 'manhole': case 'crater': {
+        const w = k === 'edge' ? rand(64, 84) : k === 'manhole' ? 46 : rand(62, 84);
+        const g = { type: 'gap', kind: k, x: k === 'edge' ? x + 40 : x, w, h: 0, seed };
+        if (k === 'manhole') { g.exit = rand(150, 190); g.span = w * 2 + g.exit; }
+        g.gy = groundY(g.x + w / 2); g.y = g.gy;
+        obstacles.push(g); maybeNote(g);
+        return (g.span || w) + (k === 'edge' ? 40 : 0);
+      }
+    }
+    if (!o) return null;
+    addGround(o);
+    if (o.type === 'drop') o.y = o.gy - o.alt - o.h;
+    if (!o.hidden) maybeNote(o);
+    if (o.type === 'train') return 120;
+    return o.w;
+  }
+
+  // поведение особых препятствий каждый кадр
+  const TICK = {
+    weed(o, dt) {
+      const ridden = player.ride === o;
+      if (ridden) o.x = player.x - o.w / 2;
+      else o.x -= o.vx * dt;
+      o.rot += (ridden ? moveSpeed : -o.vx) * dt / 19;   // катится по земле
+      o.ph += dt * 7;
+      const hop = ridden ? 0 : Math.abs(Math.sin(o.ph)) * 5;
+      o.gy = groundY(o.x + o.w / 2); o.ang = 0;
+      o.y = o.gy - o.h - hop;
+    },
+    boulder(o, dt) {
+      o.x -= o.vx * dt;
+      o.rot -= (moveSpeed + o.vx) * dt / (o.w / 2);
+      const cx = o.x + o.w / 2;
+      o.gy = groundY(cx); o.ang = 0;
+      if (o.kind === 'hop') {
+        // скачет так, что над Искоркой оказывается на высоте — под ним можно пригнуться
+        const prev = o.alt;
+        o.alt = 36 * Math.abs(Math.cos(Math.PI * (cx - player.x) / 280));
+        if (prev > 2 && o.alt <= 2 && cx < W + 20 && cx > -20) {
+          puffCloud(cx, o.gy, 3, true);
+          if (sfxOk()) blip(audio.currentTime, 'sine', 120, 50, 0.12, 0.1);
+        }
+      }
+      o.y = o.gy - o.alt - o.h;
+    },
+    train(o, dt) {
+      o.x -= o.vx * dt;
+      o.rot -= (moveSpeed + o.vx) * dt / 7;
+      o.gy = groundY(o.x + o.w / 2); o.y = o.gy - o.h; o.ang = Math.atan(slopeAt(o.x + o.w / 2));
+      // заранее: гудок «ту-ту!» и дым из-за правого края
+      if (!o.warned && o.x < W + (moveSpeed + o.vx) * 1.05) {
+        o.warned = true;
+        trainWhistleSfx();
+        popups.push({ x: W - 96 - safe.r, y: groundY(W - 60) - 92, t: 1.2, text: 'ТУ-ТУ!', size: 24 });
+      }
+      o.smoke -= dt;
+      if (o.smoke <= 0 && o.x < W + 140) {
+        o.smoke = 0.09;
+        particles.push({ x: Math.min(o.x + 21, W + 8), y: o.y + 2, cloud: true, vx: rand(20, 80), vy: rand(-90, -50), life: 0.7, max: 0.7, r: rand(3, 5) });
+      }
+      o.chug -= dt;
+      if (o.chug <= 0 && o.x < W + 60 && o.x > -o.w) { o.chug = 0.13; if (sfxOk()) noiseHit(audio.currentTime, 'bandpass', 500, 1, 0.06, 0.06); }
+    },
+    drop(o, dt) {
+      const cx = o.x + o.w / 2;
+      if (o.state === 'wait' && cx - (player.x + o.lead) <= moveSpeed * 0.55 + 1) {
+        o.state = 'fall'; o.ft = 0;
+        anvilWhistleSfx();
+      }
+      if (o.state === 'fall') {
+        o.ft += dt;
+        const k = Math.min(1, o.ft / 0.55);
+        o.alt = DROP_ALT * (1 - k * k);
+        if (k >= 1) {
+          o.state = 'landed'; o.alt = 0;
+          shake = Math.max(shake, 0.3);
+          puffCloud(cx, o.gy, 8, true);
+          if (o.kind === 'piano') pianoCrashSfx(); else clangSfx();
+        }
+      }
+      if (!o.onPlayer) o.y = o.gy - o.alt - o.h;
+    },
+    gap(o, dt) {
+      if (o.lidT) o.lidT += dt;   // крышка соседнего люка летит
+    },
+  };
+
+  // ---------- Перекати-поле: запрыгнуть сверху и прокатиться ----------
+  function startRide(o) {
+    player.ride = o;
+    o.rideT = 0; o.passed = true;
+    player.onGround = true; player.vy = 0; player.fastFall = false; player.dbl = false;
+    player.flipT = 0; player.flipAng = 0;
+    player.squash = 0.45; player.squashV = 0;
+    landSound();
+    say('ride', 2, 1, 0);
+  }
+  function endRide(crumble) {
+    const o = player.ride;
+    player.ride = null;
+    if (!o || !crumble) return;
+    // рассыпалось под ней
+    o.gone = true;
+    puffCloud(o.x + o.w / 2, o.gy - o.h / 2, 10, true);
+    popups.push({ x: player.x + 30, y: player.bottom - 40, t: 0.8, text: 'ХРУСТЬ!' });
+    crunchSfx();
+    player.onGround = false; player.vy = -260;
+  }
+
+  // ---------- Мультяшные реакции на удар ----------
+  // Каждая отнимает жизнь, но выглядит по-своему; поза рисуется через player.rsx/rsy/rtilt/rLeg
+  const REACT = { cactus: 'prick', trap: 'prick', tunnel: 'tunnel', drop: 'flat', edge: 'hang', tnt: 'soot', manhole: 'manhole', banana: 'slip', rake: 'rake' };
+
+  function resetPose() {
+    player.rsx = 1; player.rsy = 1; player.rtilt = 0; player.rLeg = 1;
+    player.look = ''; player.legRun = false; player.lying = false; player.stiff = false;
+  }
+
+  function startReact(o, kind) {
+    const last = lives === 0;
+    if (!last) lives--;
+    hitSeq = { t: 0, o, last, kind, speedK: 0, ev: {} };
+    o.passed = true;
+    player.windup = 0; player.buffer = 0; player.flutter = 0;
+    player.duck = false; player.fastFall = false;
+    player.flipT = 0; player.flipAng = 0;
+    if (player.ride) endRide(false);
+    if (!last) popups.push({ x: player.x + 36, y: player.bottom - 94, t: 0.9, text: '−1 ♥' });
+    if (eraser.gadget) endGadget();
+    if (!last && eraser.mode === 'chase') { eraserSay('near', 0.5); eraser.chaseT += 8; }
+    REACTS[kind].start(hitSeq, o);
+  }
+
+  // одно событие внутри реакции — ровно один раз
+  const once = (h, key, t) => h.t >= t && !h.ev[key] && (h.ev[key] = true);
+  const ease = (k) => { k = clamp(k, 0, 1); return k * k * (3 - 2 * k); };
+  function easeBack(u) { const c = 1.9; u = clamp(u, 0, 1); return 1 + (c + 1) * Math.pow(u - 1, 3) + c * Math.pow(u - 1, 2); }
+
+  // реакция закончилась: «бах!» и бежит дальше, тихо встаёт — или Ластик догоняет на последней жизни
+  function endReact(h, style) {
+    resetPose();
+    player.noPhys = false;
+    player.hidden = false;
+    const o = h.o;
+    if (o.type !== 'error') { o.x = player.x - (o.w || 30) - 40; o.onPlayer = false; }
+    o.eSkip = true;
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const q = obstacles[i];
+      if (q !== o && q.x + (q.w || 30) > player.x - 30 && q.x < player.x + 190) obstacles.splice(i, 1);
+    }
+    if (h.last) { h.kind = 'wait'; h.speedK = 0; return; }   // сначала приземлиться, потом — Ластик
+    hitSeq = null;
+    if (style === 'bang') {
+      invuln = SPIN + LAUNCH + 0.3;
+      player.spin = SPIN;
+      player.vy = -430; player.onGround = false;
+      player.squash = -0.3;
+      kickRays(5, 6);
+      bangSound();
+      say('revive', 3, 1, 0);
+      popups.push({ x: player.x + 32, y: player.bottom - 98, t: 0.8, text: 'БАХ!', size: 26 });
+      puff(player.x, player.bottom, 10);
+    } else {
+      invuln = 1.1;
+      say('revive', 3, 0.8, 0);
+    }
+  }
+
+  // общий кусок «врезалась и упала на спину»: прилипла → валится назад → лежит
+  function fallBack(h, t, t0, t1) {
+    if (t >= t0 && t < t1) {
+      const k = ease((t - t0) / (t1 - t0));
+      player.rtilt = -1.45 * k * k;
+    } else if (t >= t1) {
+      player.rtilt = -1.45 + Math.sin((t - t1) * 14) * 0.06 * Math.exp(-(t - t1) * 5);
+      player.lying = true;
+      if (once(h, 'thud', t1)) { landSound(); puffCloud(player.x - 20, player.bottom, 6, true); }
+      h.tweet = (h.tweet ?? 0.1) - 1 / 60;
+      if (h.tweet <= 0) { tweetSfx(); h.tweet = 0.4; }
+    }
+  }
+
+  const REACTS = {
+    // кактус и капкан: подскакивает с «Ай!»
+    prick: {
+      start(h, o) {
+        player.vy = -680; player.onGround = false;
+        player.squash = -0.45; player.squashV = 0;
+        player.needles = o.type === 'cactus' ? 2.6 : 0;
+        hitStop = 0.08;
+        impact = { x: player.x + 18, y: player.bottom - 30, t: 0.08, text: o.type === 'trap' ? 'ЩЁЛК!' : 'КОЛЬ!' };
+        kickRays(6, 10);
+        if (o.type === 'trap') { o.snap = true; o.hidden = false; snapSfx(); }
+        ouchSfx();
+        sayText(o.type === 'trap' ? 'Ай-ай-ай!' : 'Ай!');
+        h.speedK = 0.35;
+      },
+      upd(h, dt, t) {
+        player.legRun = !player.onGround;   // в воздухе сучит ножками
+        player.rtilt = player.onGround ? 0 : -0.2 * Math.sin(Math.min(1, t / 0.7) * Math.PI);
+        if (t > 0.15 && player.onGround) endReact(h, 'quick');
+      },
+    },
+    // нарисованный тоннель: «бум» в скалу, сползает и падает на спину
+    tunnel: {
+      start(h, o) {
+        player.onGround = true; player.vy = 0;
+        player.x = o.x - 12;
+        hitStop = 0.12; shake = 0.7;
+        impact = { x: o.x + 4, y: player.bottom - 40, t: 0.12, text: 'БУМ!' };
+        kickRays(6, 12);
+        thudSfx();
+        h.speedK = 0;
+      },
+      upd(h, dt, t) {
+        player.x = h.o.x - 12;
+        player.bottom = groundY(player.x);
+        player.onGround = true;
+        if (t < 0.8) {
+          // расплющило о скалу: тонкая, вытянутая, сползает
+          player.rsx = 0.42 + Math.sin(t * 30) * 0.03 * Math.exp(-t * 4);
+          player.rsy = 1.22;
+          player.stiff = true;
+          if (once(h, 'oops', 0.35)) sayText('Ой…', 3);
+        } else {
+          const k = ease((t - 0.8) / 0.25);
+          player.rsx = 0.42 + 0.48 * k; player.rsy = 1.22 - 0.27 * k;
+          player.stiff = true;
+          fallBack(h, t, 0.8, 1.3);
+        }
+        if (t >= 2.15) endReact(h, 'bang');
+      },
+    },
+    // наковальня и пианино: сплющивает в блин
+    flat: {
+      start(h, o) {
+        o.state = 'landed'; o.alt = 0; o.onPlayer = true;
+        o.x = player.x - o.w / 2;
+        player.onGround = true; player.vy = 0; player.bottom = groundY(player.x);
+        hitStop = 0.1; shake = 0.8;
+        impact = { x: player.x + 28, y: player.bottom - 46, t: 0.1, text: 'ХЛОП!' };
+        if (o.kind === 'piano') { pianoCrashSfx(); setTimeout(chordSfx, 120); } else clangSfx();
+        h.speedK = 0;
+      },
+      upd(h, dt, t) {
+        const o = h.o;
+        player.bottom = groundY(player.x); player.onGround = true;
+        o.gy = groundY(o.x + o.w / 2);
+        if (t < 0.7) {
+          player.rsx = 1.7; player.rsy = 0.13; player.rLeg = 0;
+          o.x = player.x - o.w / 2;
+          o.y = o.gy - o.h - 4;
+        } else if (t < 1.0) {
+          // предмет отпрыгивает назад
+          const k = (t - 0.7) / 0.3;
+          o.x = player.x - o.w / 2 - 80 * k;
+          o.y = o.gy - o.h - 4 - Math.sin(k * Math.PI) * 26;
+          player.rsx = 1.7; player.rsy = 0.13; player.rLeg = 0;
+        } else {
+          o.x = player.x - o.w / 2 - 80; o.y = o.gy - o.h;
+          if (t < 1.95) {
+            // блинчик: колышется и моргает
+            player.rsx = 1.7 + Math.sin(t * 9) * 0.07; player.rsy = 0.13 + Math.sin(t * 9 + 1) * 0.02; player.rLeg = 0;
+            if (once(h, 'blink1', 1.3)) player.blinkT = 0.15;
+            if (once(h, 'blink2', 1.55)) player.blinkT = 0.15;
+          } else {
+            // надувается обратно: «пуф!»
+            const u = (t - 1.95) / 0.35;
+            const e = easeBack(u);
+            player.rsy = 0.13 + 0.87 * e; player.rsx = 1.7 - 0.7 * e; player.rLeg = clamp(e, 0, 1);
+            if (once(h, 'pump', 1.95)) { inflateSfx(); popups.push({ x: player.x + 30, y: player.bottom - 70, t: 0.6, text: 'ПУФ!' }); }
+          }
+        }
+        if (t >= 2.35) endReact(h, 'bang');
+      },
+    },
+    // обрыв «Осторожно!»: висит в воздухе, как Койот, и падает
+    hang: {
+      start(h) {
+        player.onGround = false; player.vy = 0; player.noPhys = true;
+        h.by = player.bottom;
+        h.speedK = 0;
+      },
+      upd(h, dt, t) {
+        if (t < 1.1) {
+          player.bottom = h.by;
+          player.legRun = t < 0.4;           // ещё бежит по воздуху…
+          if (player.legRun) player.step += dt * 40;
+          player.look = t < 0.4 ? '' : t < 0.75 ? 'down' : 'front';   // …смотрит вниз, потом на зрителя
+          if (once(h, 'oops', 0.75)) sayText('Ой.', 3);
+          return;
+        }
+        player.look = 'front';
+        player.legRun = false;
+        if (once(h, 'fall', 1.1)) { player.vy = 0; fallWhistleSfx(); }
+        if (!player.hidden) {
+          player.vy += 2000 * dt;
+          player.bottom += player.vy * dt;
+          const k = clamp((player.bottom - h.by) / 260, 0, 1);
+          player.rsx = player.rsy = 1 - 0.55 * k;   // уменьшается, улетая вниз
+          if (player.bottom > H + 90) player.hidden = true;
+        }
+        if (once(h, 'poof', 2.05)) {
+          // далеко внизу — облачко пыли
+          const cx = h.o.x + h.o.w / 2;
+          popups.push({ x: cx - 14, y: H - 18, t: 0.8, text: 'пуф', size: 15 });
+          puffCloud(cx, H + 2, 6, true);
+          if (sfxOk()) blip(audio.currentTime, 'sine', 110, 50, 0.12, 0.2);
+        }
+        if (t >= 2.6) {
+          // возвращается сверху, обрыв уже позади
+          player.rsx = player.rsy = 1;
+          player.hidden = false; player.noPhys = false;
+          player.bottom = groundY(player.x) - 330; player.vy = 0; player.onGround = false;
+          endReact(h, 'quick');
+        }
+      },
+    },
+    // динамит: взрыв, чумазая, лучики дымятся
+    soot: {
+      start(h, o) {
+        o.gone = true;
+        hitStop = 0.12; shake = 1;
+        impact = { x: o.x + o.w / 2, y: o.y, t: 0.14, text: 'БАБАХ!', big: true };
+        boomSfx();
+        puffCloud(o.x + o.w / 2, o.gy, 14, true);
+        player.vy = -560; player.onGround = false;
+        player.soot = 1;
+        h.kx = player.x;
+        kickRays(7, 14);
+        h.speedK = 0.2;
+      },
+      upd(h, dt, t) {
+        if (t < 0.5) { player.x = h.kx - 26 * ease(t / 0.5); h.speedK = 0.2; } else h.speedK = 0;
+        player.soot = 1;
+        if (!player.onGround) { player.rtilt = -0.25 * Math.sin(Math.min(1, t / 0.6) * Math.PI); return; }
+        player.rtilt = 0;
+        player.stiff = true;   // стоит столбом, моргает
+        if (once(h, 'b1', 0.9)) player.blinkT = 0.15;
+        if (once(h, 'b2', 1.15)) player.blinkT = 0.15;
+        if (once(h, 'cough', 1.35)) { sayText('Кхе!', 3); coughSfx(); puffCloud(player.x + 18, player.bottom - 40, 4); }
+        if (t >= 1.95) endReact(h, 'bang');
+      },
+    },
+    // люк: проваливается и вылетает из соседнего
+    manhole: {
+      start(h, o) {
+        player.noPhys = true; player.onGround = false; player.vy = 60;
+        player.x = clamp(player.x, o.x + 14, o.x + o.w - 14);
+        if (sfxOk()) slide(audio.currentTime, 'sine', 1400, 300, 0.35, 0.06);
+        h.speedK = 0;
+        // под землёй едет к соседнему люку — убираем всё, что стоит рядом с выходом
+        const ex = o.x + o.w + o.exit;
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+          const q = obstacles[i];
+          if (q !== o && q.x < ex + 260 && q.x + (q.w || 30) > o.x) obstacles.splice(i, 1);
+        }
+      },
+      upd(h, dt, t) {
+        const o = h.o;
+        if (!player.hidden) {
+          player.vy += 2300 * dt;
+          player.bottom += player.vy * dt;
+          player.rLeg = 0.6;
+          if (player.bottom > groundY(player.x) + 90) player.hidden = true;
+        }
+        if (t > 0.3) h.speedK = 1;   // едет под землёй
+        for (const [key, at, txt] of [['c1', 0.45, 'БОНК'], ['c2', 0.7, 'КЛОНК'], ['c3', 0.92, 'ДЗЫНЬ']]) {
+          if (once(h, key, at)) { pipeSfx(); popups.push({ x: player.x - 20 + Math.random() * 40, y: groundY(player.x) + 22, t: 0.5, text: txt, size: 13 }); }
+        }
+        const exitX = o.x + o.w * 1.5 + o.exit;
+        if ((t > 0.4 && exitX <= player.x + 2) || t > 3) {
+          // вылетает из соседнего люка, крышка — в небо
+          player.x = Math.max(player.x, exitX);
+          player.hidden = false; player.noPhys = false;
+          player.bottom = groundY(player.x); player.vy = -820; player.onGround = false;
+          player.rLeg = 1;
+          o.lidT = 0.0001;
+          clangSfx();
+          popups.push({ x: player.x + 26, y: player.bottom - 70, t: 0.8, text: 'БЭМС!', size: 24 });
+          puffCloud(player.x, player.bottom, 8, true);
+          o.passed = true;
+          const keep = o;
+          endReact(h, 'quick');
+          keep.x = player.x - keep.w * 1.5 - keep.exit;   // люк остаётся на месте — возвращаем его под выход
+          startFlip(0.62);
+        }
+      },
+    },
+    // банановая кожура: поскальзывается, кувырок назад
+    slip: {
+      start(h, o) {
+        o.squashed = true;
+        player.vy = -580; player.onGround = false;
+        player.flipDir = -1; player.flipT = 0.0001; player.flipDur = 0.8; player.flipAng = 0;
+        slipSfx();
+        sayText('Уо-о-о!', 3);
+        h.speedK = 0.6;
+      },
+      upd(h, dt, t) {
+        h.speedK = player.onGround ? 0 : 0.6;
+        if (player.onGround && t > 0.15) {
+          if (!h.landT) { h.landT = t; puffCloud(player.x, player.bottom, 6, true); }
+          const k = t - h.landT;
+          player.rtilt = Math.sin(k * 18) * 0.25 * Math.exp(-k * 5);   // покачивается, ловит равновесие
+          if (k > 0.45) endReact(h, 'quick');
+        }
+      },
+    },
+    // грабли: черенок прилетает в лоб
+    rake: {
+      start(h, o) {
+        o.hidden = false;
+        player.onGround = true; player.vy = 0;
+        if (sfxOk()) slide(audio.currentTime, 'triangle', 300, 900, 0.12, 0.06);
+        h.speedK = 0;
+      },
+      upd(h, dt, t) {
+        const o = h.o;
+        player.bottom = groundY(player.x); player.onGround = true;
+        if (t < 0.13) { o.sw = t / 0.13; return; }
+        if (once(h, 'smack', 0.13)) {
+          o.sw = 1;
+          hitStop = 0.1; shake = 0.5;
+          impact = { x: player.x + 16, y: player.bottom - 52, t: 0.1, text: 'БОНК!' };
+          bonkSfx(); kickRays(5, 10);
+        }
+        player.stiff = true;
+        if (t < 0.85) { player.rsx = 0.86; player.rsy = 1.08; o.sw = 1; return; }
+        o.sw = 1 - ease((t - 0.85) / 0.3);
+        player.rsx = 1; player.rsy = 1;
+        fallBack(h, t, 0.85, 1.3);
+        if (t >= 2.1) endReact(h, 'bang');
+      },
+    },
+  };
+
+  function updateReact(h, dt) {
+    if (h.kind === 'wait') {
+      // последняя жизнь: как только приземлилась — садится, и Ластик стирает
+      if (player.onGround) { h.kind = null; h.t = HIT.knock; player.onGround = true; }
+      return;
+    }
+    REACTS[h.kind].upd(h, dt, h.t);
+  }
+
+  // ---------- Звуки локаций ----------
+  function ouchSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    slide(t, 'square', 600, 1600, 0.12, 0.05);
+    slide(t + 0.1, 'triangle', 1500, 700, 0.2, 0.06, 40);
+  }
+  function thudSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    blip(t, 'sine', 140, 40, 0.42, 0.4);
+    noiseHit(t, 'lowpass', 400, 0.7, 0.35, 0.25);
+    noiseHit(t, 'bandpass', 1800, 1.5, 0.1, 0.06);
+  }
+  // аккорд пианино: до-ми-соль-до, долго звенит
+  function chordSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    for (const f of [261.6, 329.6, 392, 523.3]) {
+      blip(t, 'triangle', f, f, 0.07, 2.2);
+      blip(t, 'sine', f * 2, f * 2, 0.025, 1.6);
+    }
+  }
+  function pianoCrashSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    noiseHit(t, 'lowpass', 1200, 0.6, 0.35, 0.3);
+    blip(t, 'sine', 110, 45, 0.3, 0.3);
+    for (let i = 0; i < 6; i++) { const f = 200 + Math.random() * 900; blip(t + i * 0.02, 'triangle', f, f, 0.04, 0.35); }
+  }
+  function coughSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    noiseHit(t, 'bandpass', 700, 1.2, 0.16, 0.09);
+    noiseHit(t + 0.18, 'bandpass', 650, 1.2, 0.13, 0.08);
+  }
+  function slipSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    slide(t, 'sine', 400, 1800, 0.35, 0.08);
+    slide(t, 'square', 2200, 2600, 0.08, 0.02);
+  }
+  function fallWhistleSfx() { if (sfxOk()) slide(audio.currentTime, 'sine', 1900, 250, 0.95, 0.07); }
+  function pipeSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime, f = rand(300, 600);
+    blip(t, 'square', f, f * 0.98, 0.05, 0.25);
+    blip(t, 'sine', f * 2.7, f * 2.6, 0.04, 0.3);
+  }
+  function inflateSfx() { if (sfxOk()) slide(audio.currentTime, 'triangle', 200, 900, 0.3, 0.07, 25); }
+  function crunchSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    for (let i = 0; i < 5; i++) noiseHit(t + i * 0.035, 'highpass', 2500, 0.8, 0.08, 0.03);
+  }
+  function snapSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    noiseHit(t, 'highpass', 3000, 0.8, 0.25, 0.04);
+    blip(t, 'square', 900, 300, 0.08, 0.08);
+  }
+  // гудок паровоза «ту-ту!»
+  function trainWhistleSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    for (const [st, len] of [[0, 0.22], [0.3, 0.5]]) {
+      slide(t + st, 'sawtooth', 523, 515, len, 0.035, 6);
+      slide(t + st, 'sawtooth', 659, 650, len, 0.03, 6);
+    }
+  }
+
+  // ---------- Локации: отрисовка препятствий ----------
+  // Перекати-поле: клубок веточек, катится
+  function drawWeed(o) {
+    const r = o.w / 2, cx = o.x + r, cy = o.y + r;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(o.rot);
+    ink(1.4);
+    sCircle(0, 0, r - 1, r - 2);
+    paper();
+    ctx.stroke();
+    ink(1, 0.8);
+    for (let i = 0; i < 6; i++) {
+      const a = o.seed + i * 1.05, rr = r * (0.3 + (i % 3) * 0.18);
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(a) * r * 0.25, Math.sin(a) * r * 0.25, rr, rr * 0.55, a, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ink(1.2);
+    ctx.beginPath();
+    for (let i = 0; i < 7; i++) {
+      const a = o.seed * 2 + i * 0.9;
+      ctx.moveTo(Math.cos(a) * (r - 4), Math.sin(a) * (r - 4));
+      ctx.lineTo(Math.cos(a + 0.18) * (r + 4), Math.sin(a + 0.18) * (r + 4));
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Скала с нарисованным тоннелем — классика Дорожного бегуна
+  function drawTunnel(o) {
+    const w = o.w, h = o.h;
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ink(1.8);
+    sPoly([[0, h], [1, h * 0.45], [w * 0.12, h * 0.16], [w * 0.38, 0], [w * 0.66, h * 0.04], [w * 0.9, h * 0.2], [w, h * 0.5], [w, h]], true);
+    paper();
+    ctx.stroke();
+    ink(1, 0.5);
+    ctx.beginPath();
+    for (let i = 0; i < 5; i++) { const y = h * 0.28 + i * h * 0.13; ctx.moveTo(w * 0.86, y); ctx.lineTo(w * 0.97, y + 6); }
+    ctx.moveTo(w * 0.3, h * 0.12); ctx.lineTo(w * 0.42, h * 0.08);
+    ctx.stroke();
+    // «тоннель» — просто краска на камне
+    const x0 = w * 0.17, x1 = w * 0.79, rr = (x1 - x0) / 2, top = h * 0.3 + rr, mx = (x0 + x1) / 2;
+    ctx.beginPath();
+    ctx.moveTo(x0, h); ctx.lineTo(x0, top); ctx.arc(mx, top, rr, Math.PI, 0); ctx.lineTo(x1, h);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(16,24,66,0.92)';
+    ctx.fill();
+    ink(1.6);
+    ctx.stroke();
+    // дорога «уходит» внутрь
+    ink(1, 0.75);
+    ctx.beginPath();
+    ctx.moveTo(x0 + 3, h); ctx.lineTo(mx - 3, h * 0.7);
+    ctx.moveTo(x1 - 3, h); ctx.lineTo(mx + 3, h * 0.7);
+    ctx.stroke();
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(mx, h); ctx.lineTo(mx, h * 0.72); ctx.stroke();
+    ctx.setLineDash([]);
+    // потёки краски
+    ink(1.1, 0.8);
+    ctx.beginPath();
+    ctx.moveTo(x0 + 1, top + 4); ctx.lineTo(x0 + 1, top + 11);
+    ctx.moveTo(x1 - 1, top + 8); ctx.lineTo(x1 - 1, top + 13);
+    ctx.stroke();
+    // ведро с краской и кисть у подножия
+    ink(1.3);
+    sPoly([[-13, h], [-5, h], [-4, h - 9], [-14, h - 9]], true); paper(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-15, h - 9); ctx.quadraticCurveTo(-9, h - 17, -3, h - 9); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-8, h - 9); ctx.lineTo(-2, h - 22); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawPiano(cx, by) {
+    ink(1.6);
+    sRect(cx - 29, by - 44, 58, 36); paper(); ctx.stroke();       // корпус
+    sRect(cx - 31, by - 47, 62, 4); paper(); ctx.stroke();         // крышка
+    sRect(cx - 31, by - 24, 62, 7); paper(); ctx.stroke();         // клавиатура
+    ink(0.9, 0.85);
+    ctx.beginPath();
+    for (let i = 1; i < 12; i++) { const x = cx - 31 + i * 62 / 12; ctx.moveTo(x, by - 24); ctx.lineTo(x, by - 17); }
+    ctx.stroke();
+    ctx.fillStyle = C.line;
+    for (let i = 0; i < 11; i++) {
+      if (i % 7 === 2 || i % 7 === 6) continue;
+      ctx.fillRect(cx - 31 + (i + 1) * 62 / 12 - 1.4, by - 24, 2.8, 4);
+    }
+    ink(1.4);
+    ctx.beginPath();
+    ctx.moveTo(cx - 25, by - 8); ctx.lineTo(cx - 25, by);
+    ctx.moveTo(cx + 25, by - 8); ctx.lineTo(cx + 25, by);
+    ctx.stroke();
+    write('♪ ПИАНИНО', cx, by - 33, 9, 'center', 0.85, 'middle');
+  }
+
+  // Наковальня или пианино: тень на земле предупреждает, потом — свист и падение
+  function drawDrop(o) {
+    const cx = o.x + o.w / 2;
+    if (o.alt > 0 && !o.onPlayer) {
+      const k = 1 - o.alt / DROP_ALT;
+      const pulse = o.state === 'wait' ? Math.sin(T * 8) * 0.08 : 0;
+      ctx.beginPath();
+      ctx.ellipse(cx, o.gy + 2, o.w * (0.3 + 0.5 * k + pulse) / 2 + 4, 2.5 + 2.5 * k, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(16,24,66,' + (0.35 + 0.4 * k) + ')';
+      ctx.fill();
+      ink(1.1, 0.55);
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (o.y + o.h < -OFF) return;
+    const by = o.y + o.h;
+    if (o.kind === 'anvil') {
+      ctx.save();
+      ctx.translate(cx, by);
+      ctx.scale(o.w / 36, o.h / 18 * 0.75);
+      drawAnvil(0, 0);
+      ctx.restore();
+    } else drawPiano(cx, by);
+    if (o.state === 'fall') {
+      // линии падения
+      ink(1.1, 0.7);
+      ctx.beginPath();
+      for (let i = -1; i <= 1; i++) { ctx.moveTo(cx + i * o.w * 0.3, o.y - 6); ctx.lineTo(cx + i * o.w * 0.3, o.y - 26); }
+      ctx.stroke();
+    }
+  }
+
+  function drawBoulder(o) {
+    const r = o.w / 2, cx = o.x + r, cy = o.y + r;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(o.rot);
+    ink(1.7);
+    sPoly([[r, 0], [r * 0.72, r * 0.68], [0, r], [-r * 0.74, r * 0.66], [-r, 0], [-r * 0.66, -r * 0.74], [0, -r], [r * 0.7, -r * 0.7]], true);
+    paper();
+    ctx.stroke();
+    ink(1, 0.65);
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.4, -r * 0.2); ctx.lineTo(0, r * 0.05); ctx.lineTo(r * 0.15, r * 0.45);
+    ctx.moveTo(r * 0.3, -r * 0.5); ctx.lineTo(r * 0.45, -r * 0.15);
+    ctx.stroke();
+    ctx.restore();
+    if (o.kind === 'roll') {
+      // пыль из-под катящегося валуна
+      ink(1, 0.5);
+      ctx.beginPath();
+      for (let i = 0; i < 3; i++) { const lx = o.x + o.w + 4 + i * 6; ctx.moveTo(lx, o.gy - 4 - i * 4); ctx.lineTo(lx + 8, o.gy - 4 - i * 4); }
+      ctx.stroke();
+    }
+  }
+
+  // Связка динамита с горящим фитилём
+  function drawTnt(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ink(1.5);
+    for (let i = 0; i < 3; i++) { roundRect(1 + i * 7, 4, 6.5, o.h - 4, 2.5); paper(); ctx.stroke(); }
+    sRect(0, o.h * 0.45, o.w, 5); paper(); ctx.stroke();
+    write('TNT', o.w / 2, o.h * 0.45 + 2.8, 6, 'center', 0.9, 'middle');
+    // фитиль-завиток и искры
+    ink(1.2);
+    ctx.beginPath();
+    ctx.moveTo(o.w / 2, 4); ctx.quadraticCurveTo(o.w / 2 + 8, -3, o.w / 2 + 3, -8);
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(o.w / 2 + 3, -9);
+    ctx.rotate(T * 20);
+    const k = 0.8 + Math.sin(T * 40) * 0.3;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const r = i % 2 ? 1.6 : 4.5 * k, a = i * Math.PI / 4;
+      if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fillStyle = C.line; ctx.fill();
+    ctx.restore();
+    ctx.restore();
+  }
+
+  function drawBanana(o) {
+    ctx.save();
+    ctx.translate(o.x + o.w / 2, o.y + o.h);
+    if (o.squashed) ctx.scale(1.3, 0.6);
+    ink(1.4);
+    ctx.beginPath();
+    ctx.moveTo(-3, -2);
+    ctx.quadraticCurveTo(-12, -4, -12, 0); ctx.quadraticCurveTo(-7, -1, -3, 0);   // левый лепесток
+    ctx.moveTo(3, -2);
+    ctx.quadraticCurveTo(12, -4, 12, 0); ctx.quadraticCurveTo(7, -1, 3, 0);       // правый
+    paper(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-3, 0); ctx.quadraticCurveTo(-4, -8, 0, -9); ctx.quadraticCurveTo(4, -8, 3, 0); // середина
+    paper(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -9); ctx.lineTo(1, -11); ctx.stroke();
+    ctx.restore();
+  }
+
+  // Капкан: раскрытые челюсти с зубьями; сработал — захлопнулся
+  function drawTrap(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y + o.h);
+    ink(1.5);
+    sRect(1, -3, o.w - 2, 3); paper(); ctx.stroke();
+    const c = o.w / 2;
+    if (!o.snap) {
+      ctx.beginPath();
+      ctx.moveTo(1, -3); ctx.quadraticCurveTo(c / 2, -9, c - 2, -3);
+      ctx.moveTo(o.w - 1, -3); ctx.quadraticCurveTo(o.w - c / 2, -9, c + 2, -3);
+      ctx.stroke();
+      ink(1);
+      ctx.beginPath();
+      for (let i = 1; i < 5; i++) {
+        const xl = 1 + (c - 3) * i / 5, xr = o.w - 1 - (c - 3) * i / 5;
+        ctx.moveTo(xl, -5); ctx.lineTo(xl + 1.5, -9); ctx.moveTo(xr, -5); ctx.lineTo(xr - 1.5, -9);
+      }
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(c, -4, 2.2, 0, Math.PI * 2); paper(); ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(c - 9, -3); ctx.quadraticCurveTo(c - 10, -16, c, -17);
+      ctx.moveTo(c + 9, -3); ctx.quadraticCurveTo(c + 10, -16, c, -17);
+      ctx.stroke();
+      ink(1);
+      ctx.beginPath();
+      for (let i = 0; i < 4; i++) { const y = -6 - i * 3; ctx.moveTo(c - 3, y); ctx.lineTo(c + 3, y - 1.5); }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Грабли: наступила на зубья — черенок прилетает в лоб
+  function drawRake(o) {
+    const px = o.x + 8, py = o.y + o.h;
+    const a = -2.0 * (o.sw || 0);
+    ctx.save();
+    ctx.translate(px, py - 2);
+    ctx.rotate(a);
+    ink(2.2);
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(62, 0); ctx.stroke();
+    ctx.restore();
+    ink(1.4);
+    ctx.beginPath();
+    ctx.moveTo(px - 7, py - 2); ctx.lineTo(px + 7, py - 2);
+    for (let i = -6; i <= 6; i += 3) { ctx.moveTo(px + i, py - 2); ctx.lineTo(px + i, py - 7); }
+    ctx.stroke();
+  }
+
+  // Шлагбаум: полосатая стрела на высоте — под ней пригнуться; столбик стоит за дорогой
+  function drawBarrier(o) {
+    const gy = o.gy, px = o.x + o.w - 4;
+    ink(1.4, 0.75);
+    sRect(px - 3, gy - 64, 6, 58); paper(); ctx.stroke();
+    // мигающие фонари
+    const on = Math.floor(T * 3) % 2;
+    for (const s of [0, 1]) {
+      ctx.beginPath();
+      ctx.arc(px - 7 + s * 14, gy - 68, 3.2, 0, Math.PI * 2);
+      if ((s === on)) { ctx.fillStyle = C.line; ctx.fill(); } else paper();
+      ink(1.2, 0.8); ctx.stroke();
+    }
+    ink(1.2, 0.8);
+    ctx.beginPath(); ctx.moveTo(px - 10, gy - 68); ctx.lineTo(px + 10, gy - 68); ctx.stroke();
+    // стрела
+    const y = gy - 50;
+    ink(1.5);
+    sRect(o.x, y, o.w - 4, 10); paper(); ctx.stroke();
+    ctx.save();
+    ctx.beginPath(); ctx.rect(o.x, y, o.w - 4, 10); ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    for (let x = o.x - 10; x < o.x + o.w; x += 16) {
+      ctx.beginPath(); ctx.moveTo(x, y + 10); ctx.lineTo(x + 8, y); ctx.lineTo(x + 14, y); ctx.lineTo(x + 6, y + 10); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    ink(1.4);
+    sRect(px + 2, y - 2, 9, 12); paper(); ctx.stroke();   // противовес
+  }
+
+  // Паровозик едет навстречу
+  function drawTrain(o) {
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    const h = o.h;
+    ink(1.6);
+    sPoly([[0, h - 2], [10, h - 14], [10, h - 2]], true); paper(); ctx.stroke();     // скотосбрасыватель
+    roundRect(8, h - 36, 56, 24, 9); paper(); ctx.stroke();                          // котёл
+    sPoly([[16, h - 36], [15, h - 50], [11, h - 56], [29, h - 56], [25, h - 50], [24, h - 36]], true); paper(); ctx.stroke(); // труба
+    ctx.beginPath(); ctx.arc(42, h - 36, 6, Math.PI, 0); paper(); ctx.stroke();      // купол
+    sRect(62, h - 50, 30, 40); paper(); ctx.stroke();                                // будка
+    sRect(58, h - 53, 38, 4); paper(); ctx.stroke();                                 // крыша
+    sRect(68, h - 44, 16, 12); ctx.stroke();                                         // окно
+    sRect(4, h - 31, 7, 7); paper(); ctx.stroke();                                   // фонарь
+    ink(1, 0.7);
+    ctx.beginPath();
+    ctx.moveTo(30, h - 36); ctx.lineTo(30, h - 12); ctx.moveTo(52, h - 36); ctx.lineTo(52, h - 12);
+    for (let i = 0; i < 3; i++) { ctx.moveTo(2, h - 27 + i * 2.5 - 2); ctx.lineTo(-10 - i * 3, h - 33 + i * 6); }   // свет фонаря
+    ctx.stroke();
+    write('ACME', 77, h - 24, 8, 'center', 0.9, 'middle');
+    ink(1.5);
+    sRect(6, h - 12, 88, 4); paper(); ctx.stroke();                                  // рама
+    // колёса и шатун
+    const wheels = [22, 40, 58];
+    for (const wx of wheels) {
+      ctx.beginPath(); ctx.arc(wx, h - 6, 7, 0, Math.PI * 2); paper(); ink(1.5); ctx.stroke();
+      ink(1, 0.8);
+      ctx.beginPath();
+      for (let k = 0; k < 3; k++) { const a = o.rot + k * Math.PI / 3; ctx.moveTo(wx - Math.cos(a) * 6, h - 6 - Math.sin(a) * 6); ctx.lineTo(wx + Math.cos(a) * 6, h - 6 + Math.sin(a) * 6); }
+      ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(80, h - 5, 5, 0, Math.PI * 2); paper(); ink(1.4); ctx.stroke();
+    const rx = Math.cos(o.rot) * 4, ry = Math.sin(o.rot) * 4;
+    ink(1.8);
+    ctx.beginPath(); ctx.moveTo(22 + rx, h - 6 + ry); ctx.lineTo(58 + rx, h - 6 + ry); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawBat(o) {
+    const flap = Math.sin(o.phase);
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ink(1.3);
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(s * 3, -1);
+      ctx.lineTo(s * 12, -7 - flap * 6);
+      ctx.lineTo(s * 20, -2 - flap * 9);
+      ctx.quadraticCurveTo(s * 16, 0, s * 14, 3 - flap * 3);
+      ctx.quadraticCurveTo(s * 10, 1, s * 8, 5 - flap * 2);
+      ctx.quadraticCurveTo(s * 5, 3, s * 3, 4);
+      ctx.closePath();
+      paper(); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.ellipse(0, 1, 4.5, 6, 0, 0, Math.PI * 2); paper(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-3, -3); ctx.lineTo(-2.5, -8); ctx.lineTo(-0.5, -4); ctx.moveTo(3, -3); ctx.lineTo(2.5, -8); ctx.lineTo(0.5, -4); ctx.stroke();
+    ctx.fillStyle = C.line;
+    ctx.beginPath(); ctx.arc(-1.6, -0.5, 1, 0, Math.PI * 2); ctx.arc(1.6, -0.5, 1, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  // Кратер: чаша в земле
+  function drawCrater(o) {
+    const w = o.w, y0 = groundY(o.x), y1 = groundY(o.x + w), d = 34;
+    ctx.save();
+    ctx.translate(o.x, 0);
+    const bowl = () => { ctx.moveTo(-1, y0 - 3); ctx.bezierCurveTo(w * 0.12, y0 + d, w * 0.88, y1 + d, w + 1, y1 - 3); };
+    ctx.beginPath(); bowl(); ctx.closePath();
+    ctx.fillStyle = C.bg; ctx.fill();
+    ctx.fillStyle = 'rgba(30,42,100,0.45)'; ctx.fill();
+    ink(1.8);
+    ctx.beginPath(); bowl(); ctx.stroke();
+    ink(1.6);
+    ctx.beginPath();
+    ctx.moveTo(-15, y0 - 1); ctx.quadraticCurveTo(-8, y0 - 9, -1, y0 - 3);
+    ctx.moveTo(w + 1, y1 - 3); ctx.quadraticCurveTo(w + 8, y1 - 9, w + 15, y1 - 1);
+    ctx.stroke();
+    ink(1, 0.45);
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(w * 0.15, y0 + 6); ctx.bezierCurveTo(w * 0.3, y0 + d * 0.6, w * 0.7, y1 + d * 0.6, w * 0.85, y1 + 6);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // Люк: открытая шахта с лесенкой; дальше — соседний люк, из которого Искорка вылетит
+  function drawManhole(o) {
+    const w = o.w, bottom = H + 6;
+    const shaft = (x, open) => {
+      const ya = groundY(o.x + x), yb = groundY(o.x + x + w);
+      ctx.beginPath();
+      ctx.moveTo(x - 1, ya - 3); ctx.lineTo(x + w + 1, yb - 3); ctx.lineTo(x + w + 1, bottom); ctx.lineTo(x - 1, bottom);
+      ctx.closePath();
+      ctx.fillStyle = C.bg; ctx.fill();
+      ctx.fillStyle = 'rgba(12,18,56,0.65)'; ctx.fill();
+      ink(1.8);
+      ctx.beginPath(); ctx.moveTo(x, ya); ctx.lineTo(x, bottom); ctx.moveTo(x + w, yb); ctx.lineTo(x + w, bottom); ctx.stroke();
+      ink(1, 0.6);
+      ctx.beginPath();
+      ctx.moveTo(x + 8, ya + 2); ctx.lineTo(x + 8, bottom); ctx.moveTo(x + w - 8, yb + 2); ctx.lineTo(x + w - 8, bottom);
+      for (let y = Math.max(ya, yb) + 8; y < bottom; y += 9) { ctx.moveTo(x + 8, y); ctx.lineTo(x + w - 8, y); }
+      ctx.stroke();
+    };
+    ctx.save();
+    ctx.translate(o.x, 0);
+    shaft(0);
+    // крышка прислонена к краю
+    const y0 = groundY(o.x);
+    ink(1.5);
+    roundRect(-9, y0 - 24, 5, 24, 2); paper(); ctx.stroke();
+    // соседний люк
+    const ex = w + o.exit, ey = groundY(o.x + ex + w / 2);
+    if (!o.lidT) {
+      ink(1.6);
+      sRect(ex - 2, ey - 5, w + 4, 4); paper(); ctx.stroke();
+      ink(1, 0.6);
+      ctx.beginPath(); for (let i = 1; i < 6; i++) { ctx.moveTo(ex + i * w / 6, ey - 5); ctx.lineTo(ex + i * w / 6 - 2, ey - 1); } ctx.stroke();
+    } else {
+      shaft(ex);
+      // крышка улетает вверх, кувыркаясь, и падает рядом
+      const t = o.lidT, land = 0.78;
+      const tt = Math.min(t, land);
+      const lx = ex + w / 2 + tt * 60, ly = ey - 4 - (560 * tt - 720 * tt * tt);
+      ctx.save();
+      ctx.translate(lx, Math.min(ly, ey - 3));
+      ctx.rotate(t < land ? t * 16 : 0);
+      ink(1.6);
+      sRect(-w / 2 - 2, -2, w + 4, 4); paper(); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // табличка «Осторожно!» перед обрывом
+  function drawCaution(o) {
+    const sx = o.x - 26, gy = groundY(sx);
+    ink(1.6);
+    ctx.beginPath(); ctx.moveTo(sx, gy); ctx.lineTo(sx, gy - 34); ctx.stroke();
+    ctx.save();
+    ctx.translate(sx, gy - 40);
+    ctx.rotate(-0.08 + Math.sin(T * 2 + o.seed) * 0.03);
+    sRect(-28, -9, 56, 17); paper(); ctx.stroke();
+    write('ОСТОРОЖНО!', 0, 0, 10, 'center', 1, 'middle');
+    ctx.restore();
+  }
+
+  // ---------- Локации: фоны ----------
+  // силуэт по произвольному профилю высоты (как drawRidge)
+  function drawProfile(a, par, base, hfn) {
+    const off = scroll * par;
+    const pts = [];
+    for (let x = -10; x <= W + 10; x += 6) pts.push([x, base - hfn(x + off) + wob(x + off, base) * 0.5]);
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.lineTo(W + 10, GROUND); ctx.lineTo(-10, GROUND); ctx.closePath();
+    ctx.fillStyle = 'rgba(75,98,182,0.85)';
+    ctx.fill();
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ink(1.5, a);
+    ctx.stroke();
+  }
+  // столовые горы пустыни
+  function mesaH(wx) {
+    const i = Math.floor(wx / 170), f = wx / 170 - i, r = hash1(i + 300);
+    if (r < 0.35) return 4;
+    const top = 26 + r * 44, a = 0.2 + hash1(i + 500) * 0.12, b = 0.8 - hash1(i + 700) * 0.12;
+    if (f < a - 0.07 || f > b + 0.07) return 4;
+    if (f < a) return 4 + (top - 4) * (f - (a - 0.07)) / 0.07;
+    if (f > b) return 4 + (top - 4) * ((b + 0.07) - f) / 0.07;
+    return top;
+  }
+  const duneH = (wx) => (Math.sin(wx * 0.012) * 0.6 + Math.sin(wx * 0.012 * 2.3 + 1.3) * 0.4 + 1) / 2 * 12;
+
+  function drawFarCacti() {
+    const par = 0.3, off = scroll * par, step = 110;
+    ink(1.3, 0.6);
+    ctx.beginPath();
+    for (let i = Math.floor((off - 20) / step); i * step - off < W + 20; i++) {
+      if (hash1(i + 900) < 0.45) continue;
+      const x = i * step - off + hash1(i + 950) * 60, y = GROUND - 16 - duneH(x + off), hh = 14 + hash1(i + 990) * 10;
+      ctx.moveTo(x, y); ctx.lineTo(x, y - hh);
+      ctx.moveTo(x, y - hh * 0.5); ctx.lineTo(x - 5, y - hh * 0.5); ctx.lineTo(x - 5, y - hh * 0.75);
+      ctx.moveTo(x, y - hh * 0.4); ctx.lineTo(x + 4, y - hh * 0.4); ctx.lineTo(x + 4, y - hh * 0.65);
+    }
+    ctx.stroke();
+  }
+
+  // снежные шапки на дальних пиках
+  function drawSnow(amp, base, freq, par) {
+    const off = scroll * par;
+    ink(1.2, 0.55);
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    let on = false;
+    for (let x = -10; x <= W + 10; x += 5) {
+      const wx = x + off;
+      const v = (1 - Math.abs(Math.sin(wx * freq))) * 0.7 + (1 - Math.abs(Math.sin(wx * freq * 2.7 + 1.1))) * 0.3;
+      if (v > 0.78) {
+        const y = base - v * amp + 12;
+        if (!on) { ctx.moveTo(x, y); on = true; } else ctx.lineTo(x, y);
+      } else on = false;
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // силуэты домов
+  function drawSkyline(par, a, maxH, bw, windows) {
+    const off = scroll * par, base = GROUND - 8;
+    for (let i = Math.floor((off - bw) / bw); i * bw - off < W + bw; i++) {
+      const r = hash1(i * 7 + windows * 131);
+      const x = i * bw - off + 2, w = bw - 3 - r * 6, h = maxH * (0.4 + r * 0.6);
+      ctx.beginPath();
+      ctx.rect(x, base - h, w, h);
+      ctx.fillStyle = 'rgba(75,98,182,0.9)';
+      ctx.fill();
+      ink(1.3, a);
+      sRect(x, base - h, w, h);
+      ctx.stroke();
+      if (r > 0.7) { ctx.beginPath(); ctx.moveTo(x + w / 2, base - h); ctx.lineTo(x + w / 2, base - h - 10); ctx.stroke(); }
+      if (windows > 1) {
+        ink(0.9, a * 0.6);
+        ctx.beginPath();
+        for (let wy = base - h + 6; wy < base - 8; wy += 9) {
+          for (let wx2 = x + 4; wx2 < x + w - 6; wx2 += 8) {
+            if (hash1(i * 13 + wy * 3 + wx2) > 0.35) ctx.rect(wx2, wy, 4, 4);
+          }
+        }
+        ctx.stroke();
+      }
+    }
+  }
+
+  // фонари вдоль улицы
+  function drawLamps() {
+    const par = 0.9, off = scroll * par, step = 240;
+    ink(1.3, 0.55);
+    ctx.beginPath();
+    for (let i = Math.floor((off - 40) / step); i * step - off < W + 40; i++) {
+      const x = i * step - off, y = GROUND - 8;
+      ctx.moveTo(x, y); ctx.lineTo(x, y - 74);
+      ctx.quadraticCurveTo(x, y - 82, x + 10, y - 82);
+      ctx.moveTo(x + 6, y - 80); ctx.lineTo(x + 16, y - 80); ctx.lineTo(x + 13, y - 75); ctx.lineTo(x + 9, y - 75); ctx.closePath();
+    }
+    ctx.stroke();
+  }
+
+  // телеграфные столбы и провода
+  function drawPoles() {
+    const par = 0.6, off = scroll * par, step = 210;
+    const xs = [];
+    for (let i = Math.floor((off - step) / step); i * step - off < W + step; i++) xs.push(i * step - off);
+    ink(1.4, 0.6);
+    ctx.beginPath();
+    for (const x of xs) {
+      const y = GROUND - 10;
+      ctx.moveTo(x, y); ctx.lineTo(x, y - 80);
+      ctx.moveTo(x - 10, y - 74); ctx.lineTo(x + 10, y - 74);
+    }
+    ctx.stroke();
+    ink(1, 0.45);
+    ctx.beginPath();
+    for (let k = 0; k + 1 < xs.length; k++) {
+      for (const s of [-8, 8]) {
+        const a = xs[k] + s, b = xs[k + 1] + s, y = GROUND - 10 - 73;
+        ctx.moveTo(a, y); ctx.quadraticCurveTo((a + b) / 2, y + 16, b, y);
+      }
+    }
+    ctx.stroke();
+  }
+
+  function drawScenery(loc, t) {
+    if (loc === 3) {
+      // ночь: без солнца и облаков; луна и звёзды — поверх темноты
+      drawRidge(0.4, 46, GROUND - 14, 0.005, 0.04, false);
+      drawRidge(0.5, 16, GROUND - 16, 0.016, 0.32, false);
+      return;
+    }
+    drawSun(t);
+    if (loc === 0) {
+      for (const c of cloudsFar) drawCloud(c, 0.35);
+      drawProfile(0.45, 0.05, GROUND - 14, mesaH);
+      drawProfile(0.5, 0.3, GROUND - 16, duneH);
+      drawFarCacti();
+    } else if (loc === 1) {
+      for (const c of cloudsFar) drawCloud(c, 0.45);
+      drawRidge(0.45, 112, GROUND - 14, 0.0045, 0.04, true);
+      drawSnow(112, GROUND - 14, 0.0045, 0.04);
+      for (const c of cloudsNear) drawCloud(c, 0.85);
+      drawRidge(0.55, 56, GROUND - 14, 0.008, 0.12, true);
+      drawRidge(0.5, 14, GROUND - 16, 0.016, 0.32, false);
+    } else if (loc === 2) {
+      for (const c of cloudsFar) drawCloud(c, 0.45);
+      drawSkyline(0.06, 0.45, 76, 26, 1);
+      for (const c of cloudsNear) drawCloud(c, 0.85);
+      drawSkyline(0.2, 0.55, 50, 36, 2);
+      drawLamps();
+    } else {
+      for (const c of cloudsFar) drawCloud(c, 0.45);
+      drawRidge(0.45, 40, GROUND - 14, 0.005, 0.04, false);
+      for (const c of cloudsNear) drawCloud(c, 0.85);
+      drawRidge(0.5, 14, GROUND - 16, 0.016, 0.32, false);
+      drawPoles();
+    }
+  }
+
+  // детали поверхности: разметка в городе, рельсы на железной дороге
+  function drawGroundDetail(loc) {
+    if (loc === 2) {
+      ink(1.2, 0.5);
+      ctx.setLineDash([12, 12]);
+      ctx.lineDashOffset = scroll % 24;
+      ctx.beginPath();
+      for (let x = -10; x <= W + 10; x += 8) { const y = groundY(x) + 12; if (x === -10) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+      ctx.stroke();
+      ctx.setLineDash([]); ctx.lineDashOffset = 0;
+    } else if (loc === 4) {
+      ink(1.2, 0.8);
+      ctx.beginPath();
+      const st = 15;
+      for (let x = -(scroll % st) - st; x <= W + st; x += st) { const y = groundY(x); ctx.moveTo(x - 3, y + 5); ctx.lineTo(x + 3, y - 1); }
+      ctx.stroke();
+      ink(2);
+      ctx.beginPath();
+      for (let x = -10; x <= W + 10; x += 8) { const y = groundY(x) - 2; if (x === -10) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+      ctx.stroke();
+      ink(1.4, 0.5);
+      ctx.beginPath();
+      for (let x = -10; x <= W + 10; x += 8) { const y = groundY(x) - 7; if (x === -10) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+  }
+
+  // На экране — одна или две локации (у границы); граница едет вместе с землёй
+  function segments() {
+    const L0 = levelAtD(worldD(-20));
+    const edge = L0 * LEVEL_LEN - scroll + scrollOff;
+    if (edge >= W + 20) return [{ L: L0, loc: locIdx(L0), a: -20, b: W + 20 }];
+    return [{ L: L0, loc: locIdx(L0), a: -20, b: edge }, { L: L0 + 1, loc: locIdx(L0 + 1), a: edge, b: W + 20, edge: true }];
+  }
+  function inSeg(sg, fn) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(sg.a, -OFF - 20, sg.b - sg.a, VH + 40);
+    ctx.clip();
+    fn();
+    ctx.restore();
+  }
+  // флажок на границе локаций
+  function drawSeam(sg) {
+    const x = sg.a, gy = groundY(x);
+    ink(1, 0.35);
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath(); ctx.moveTo(x, 70 - OFF); ctx.lineTo(x, gy - 64); ctx.stroke();
+    ctx.setLineDash([]);
+    ink(1.6);
+    ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x, gy - 64); ctx.stroke();
+    const fl = Math.sin(T * 5) * 2;
+    ctx.beginPath(); ctx.moveTo(x, gy - 64); ctx.quadraticCurveTo(x + 14, gy - 60 + fl, x + 26, gy - 56); ctx.quadraticCurveTo(x + 14, gy - 50 - fl, x, gy - 46);
+    paper(); ctx.stroke();
+    write(String(sg.L), x + 10, gy - 55, 11, 'center', 1, 'middle');
+  }
+
+  // ---------- Ночь: темнота и фонарик ----------
+  function beamPts() {
+    const hx = player.x + 13 * PS, hy = player.bottom - 21 * PS, gy = groundY(player.x + 300);
+    return [[hx, hy - 3], [player.x + 430, gy - 150], [player.x + 430, gy + 260], [hx, hy + 3]];
+  }
+  const STARS = Array.from({ length: 34 }, (_, i) => [hash1(i + 1200), hash1(i + 1300), hash1(i + 1400)]);
+  function drawNight(t) {
+    const lit = !player.hidden && !player.erased && mode !== 'ready';
+    const bp = beamPts();
+    const poly = () => { ctx.moveTo(bp[0][0], bp[0][1]); for (let i = 1; i < 4; i++) ctx.lineTo(bp[i][0], bp[i][1]); ctx.closePath(); };
+    ctx.beginPath();
+    ctx.rect(-20, -OFF - 20, W + 40, VH + 40);
+    if (lit) poly();
+    ctx.fillStyle = 'rgba(6,10,34,0.64)';
+    ctx.fill('evenodd');
+    if (lit) {
+      ctx.beginPath(); poly();
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fill();
+      ink(1, 0.35);
+      ctx.setLineDash([4, 5]);
+      ctx.beginPath();
+      ctx.moveTo(bp[0][0], bp[0][1]); ctx.lineTo(bp[1][0], bp[1][1]);
+      ctx.moveTo(bp[3][0], bp[3][1]); ctx.lineTo(bp[2][0], bp[2][1]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // ловушки видно только в луче
+      ctx.save();
+      ctx.beginPath(); poly(); ctx.clip();
+      for (const o of obstacles) if (o.hidden) drawObstacle(o);
+      ctx.restore();
+    }
+    // луна и звёзды
+    const mx = W * 0.74, my = 18;
+    ink(1.6, 0.9);
+    ctx.beginPath();
+    ctx.arc(mx, my, 16, -Math.PI * 0.62, Math.PI * 0.62, true);
+    ctx.quadraticCurveTo(mx - 8, my, mx + 16 * Math.cos(-Math.PI * 0.62), my + 16 * Math.sin(-Math.PI * 0.62));
+    paper();
+    ctx.stroke();
+    write('ЛУНА', mx + 26, my + 26, 13, 'left', 0.7);
+    ctx.fillStyle = C.line;
+    for (const [sx, sy, ph] of STARS) {
+      const tw = 0.4 + 0.6 * Math.abs(Math.sin(t * 1.5 + ph * 9));
+      ctx.globalAlpha = tw;
+      ctx.beginPath(); ctx.arc(sx * W, -OFF + 70 + sy * 80, 0.8 + ph * 0.9, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- Табличка «Уровень N: название» ----------
+  function drawLevelSign() {
+    const s = levelSign;
+    if (!s) return;
+    const t = s.t;
+    // падает сверху на верёвках с отскоком, качается, потом уезжает вверх
+    let y;
+    if (t < 0.7) { const k = t / 0.7; y = -70 + 170 * (1 - Math.pow(2, -9 * k) * Math.cos(k * 10)); }
+    else y = 100;
+    if (t > 3.0) y = 100 - 190 * ease((t - 3.0) / 0.6);
+    if (t > 0.18 && !s.clunk) { s.clunk = true; if (sfxOk()) blip(audio.currentTime, 'square', 300, 150, 0.06, 0.1); }
+    const sw = Math.sin(t * 5) * 0.12 * Math.exp(-t * 1.2);
+    const cx = W / 2;
+    ctx.save();
+    ctx.font = '22px ' + FONT;
+    const tw = ctx.measureText(s.text).width, bw = tw + 46, bh = 40;
+    ctx.translate(cx, 6 + safe.t);
+    ctx.rotate(sw);
+    ink(1.3, 0.9);
+    ctx.beginPath();
+    ctx.moveTo(-bw * 0.32, 0); ctx.lineTo(-bw * 0.32, y - 6);
+    ctx.moveTo(bw * 0.32, 0); ctx.lineTo(bw * 0.32, y - 6);
+    ctx.stroke();
+    ink(2);
+    roundRect(-bw / 2, y - 6, bw, bh, 6);
+    paper(C.body);
+    ctx.stroke();
+    ink(1, 0.6);
+    roundRect(-bw / 2 + 4, y - 2, bw - 8, bh - 8, 4);
+    ctx.stroke();
+    for (const sx of [-1, 1]) { ctx.beginPath(); ctx.arc(sx * bw * 0.32, y - 1, 1.8, 0, Math.PI * 2); ctx.fillStyle = C.line; ctx.fill(); }
+    write(s.text, 0, y + bh / 2 - 5, 22, 'center', 1, 'middle');
     ctx.restore();
   }
 
@@ -2952,8 +4529,9 @@
   const eraserHalf = () => EW * ES / 2;
 
   // уровень растёт каждые 500 очков; чем выше уровень, тем короче перерыв между погонями
-  const eraserLevel = () => 1 + Math.floor(score / 500);
-  const awayMeters = () => Math.max(150, 400 - (eraserLevel() - 1) * 50);
+  // с каждым уровнем (и с каждой половиной уровня) перерыв между погонями короче
+  const eraserLevel = () => curLvl;
+  const awayMeters = () => Math.max(110, 420 - (eraserLevel() - 1) * 70 - Math.floor((trav % LEVEL_LEN) / (LEVEL_LEN / 2)) * 25);
 
   function updateEraser(dt, worldSpeed) {
     const target = eraserDist(lives);
@@ -2996,7 +4574,7 @@
     }
 
     // катышки сыплются из-под ножек на бегу: отскакивают, катятся и через пару секунд тают
-    const rubbing = !!(hitSeq && hitSeq.last && hitSeq.t >= HIT.knock);
+    const rubbing = !!(hitSeq && !hitSeq.kind && hitSeq.last && hitSeq.t >= HIT.knock);
     const running = eraser.onGround && eraser.trip <= 0 && (worldSpeed > 1 || rubbing) &&
       (eraser.mode === 'chase' || eraser.mode === 'enterFront') && eraser.x < W + 30;
     const rate = running ? worldSpeed / 300 * 14 + (rubbing ? 40 : 0) : 0;
@@ -3068,7 +4646,7 @@
   function eraserObstacles(worldSpeed) {
     const front = eraser.x + eraserHalf(), back = eraser.x - eraserHalf();
     for (const o of obstacles) {
-      if (o.type === 'error' || o.kind === 'rope' || o.eSkip) continue;
+      if (o.type === 'error' || o.kind === 'rope' || o.eSkip || (o.type === 'drop' && o.state !== 'landed')) continue;
       // решаем заранее: прыгнуть или (для смеха) не успеть
       if (!o.eSeen && o.x - front < worldSpeed * 0.17 + 8 && o.x + o.w > back) {
         o.eSeen = true;
@@ -4148,6 +5726,7 @@
   resize();
   initScenery();
   reset();
+  renderLevelPick();
   requestAnimationFrame(frame);
 })();
 </script>
