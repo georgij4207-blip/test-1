@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#3A4D97">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Искорка">
 <title>Искорка — бегущая звёздочка</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -172,10 +179,54 @@
   .touch .only-keys { display: none; }
   .only-touch { display: none; }
   .touch .only-touch { display: block; }
-  .rotate-tip { display: none; }
-  @media (orientation: portrait) and (max-width: 600px) {
-    .touch .rotate-tip { display: block; margin-top: 12px; color: var(--line-soft); font-size: 15px; text-align: center; }
+  /* ---- телефон: игра на весь экран, интерфейс поверх по краям ---- */
+  body.mobile { padding: 0; display: block; overflow: hidden; }
+  body.mobile header h1, body.mobile footer { display: none; }
+  body.mobile header { position: fixed; inset: 0; width: auto !important; margin: 0; pointer-events: none; z-index: 4; }
+  body.mobile #stage {
+    position: fixed; inset: 0; max-width: none; border-radius: 0; box-shadow: none;
   }
+  /* кнопки — в правом нижнем углу, с отступом от выреза камеры и скруглённых углов */
+  body.mobile .head-right {
+    position: fixed; pointer-events: auto; gap: 8px;
+    right: calc(max(12px, env(safe-area-inset-right, 0px)) + 6px);
+    bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 4px);
+  }
+  body.mobile .sound-btn { background: rgba(58,77,151,0.75); font-size: 14px; padding: 3px 11px; }
+  #safeProbe {
+    position: fixed; inset: 0; visibility: hidden; pointer-events: none;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+  /* «Поверните телефон» */
+  #rotateScreen {
+    position: fixed; inset: 0; z-index: 30; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+    background-color: var(--paper-deep);
+    background-image:
+      linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+    text-align: center;
+    padding: 24px max(16px, env(safe-area-inset-left, 0px)) 24px max(16px, env(safe-area-inset-right, 0px));
+  }
+  @media (orientation: portrait) { body.mobile #rotateScreen { display: flex; } }
+  #rotateScreen p { margin: 0; font-size: 26px; letter-spacing: 0.04em; text-transform: uppercase; }
+  #rotateScreen small { color: var(--line-soft); font-size: 17px; }
+  .rotate-icon { width: 120px; height: 120px; }
+  .rotate-icon .phone { transform-origin: 60px 60px; animation: turnPhone 2.4s ease-in-out infinite; }
+  .rotate-icon .arc { stroke-dasharray: 5 6; animation: dashMove 1.2s linear infinite; }
+  @keyframes turnPhone {
+    0%, 20% { transform: rotate(0deg); }
+    50%, 75% { transform: rotate(-90deg); }
+    100% { transform: rotate(0deg); }
+  }
+  @keyframes dashMove { to { stroke-dashoffset: -22; } }
+  @media (prefers-reduced-motion: reduce) {
+    .rotate-icon .phone { animation: none; transform: rotate(-90deg); }
+    .rotate-icon .arc { animation: none; }
+  }
+  .install-btn { margin-left: 8px; background: transparent; color: var(--line); box-shadow: 4px 4px 0 rgba(20,30,70,0.4); }
+  .install-hint { font-size: 14px !important; }
   .head-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .sound-btn {
     appearance: none;
@@ -236,10 +287,12 @@
         <p><kbd>Esc</kbd> или кнопка «Пауза» — пауза · <kbd>M</kbd> — звук</p>
       </div>
       <div class="only-touch">
-        <p>Тап по правой половине — прыжок<br>Удержание на левой половине — пригнуться<br>Свайп вниз — тоже пригнуться<br>Кнопка «Пауза» вверху — пауза</p>
+        <p>Тап по правой половине — прыжок<br>Удержание на левой половине — пригнуться<br>Свайп вниз — тоже пригнуться<br>Кнопка «Пауза» в углу — пауза</p>
       </div>
       <div class="start-actions">
         <button class="btn" id="startBtn" type="button">Начать</button>
+        <button class="btn install-btn" id="installBtn" type="button" hidden>Установить</button>
+        <p class="install-hint" id="iosHint" hidden>Чтобы установить игру: «Поделиться» → «На экран „Домой“»</p>
         <p class="only-keys start-hint">или нажмите <kbd>Пробел</kbd></p>
       </div>
     </div>
@@ -269,7 +322,21 @@
 
 </div>
 
-<div class="rotate-tip">Совет: поверните телефон горизонтально — обзор будет шире.</div>
+<div id="rotateScreen" role="alert">
+  <svg class="rotate-icon" viewBox="0 0 120 120" aria-hidden="true">
+    <path class="arc" d="M 22 40 A 44 44 0 0 1 80 18" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 74 12 L 81 18 L 73 23" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <g class="phone">
+      <rect x="40" y="26" width="40" height="68" rx="7" fill="#4B62B6" stroke="#fff" stroke-width="3"/>
+      <line x1="54" y1="33" x2="66" y2="33" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+      <circle cx="60" cy="86" r="3" fill="none" stroke="#fff" stroke-width="2"/>
+      <text x="60" y="66" font-size="20" text-anchor="middle" fill="#fff" font-family="Neucha, cursive">✳</text>
+    </g>
+  </svg>
+  <p>Поверните телефон</p>
+  <small>Искорка бегает только горизонтально</small>
+</div>
+<div id="safeProbe"></div>
 <footer>Рекорд сохраняется в этом браузере.</footer>
 
 <script>
@@ -296,7 +363,8 @@
   const GRAVITY = 2300;
   const JUMP_V = -760;
   const JUMP_CUT = -320;
-  const PLAYER_X = 165;      // правее, чтобы сзади хватало места Ластику
+  const PLAYER_X0 = 165;     // правее, чтобы сзади хватало места Ластику
+  let PLAYER_X = PLAYER_X0;  // на телефоне сдвигается от выреза камеры
   const PS = 1.5;           // масштаб персонажа: рисунок и зона столкновения
 
   // ---------- Рельеф: бесконечные плавные холмы ----------
@@ -326,6 +394,31 @@
 
   const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
   if (isTouch) document.body.classList.add('touch');
+  // телефон: сенсорный экран и маленькая короткая сторона — игра на весь экран
+  const isPhone = isTouch && window.matchMedia('(pointer: coarse)').matches &&
+    Math.min(window.screen.width, window.screen.height) <= 600;
+  if (isPhone) document.body.classList.add('mobile');
+  const isPortrait = () => window.matchMedia('(orientation: portrait)').matches;
+
+  // Полный экран и альбомная ориентация — по первому касанию (браузеры разрешают только после жеста)
+  let fsTried = false;
+  function goFullscreen() {
+    if (!isPhone || fsTried) return;
+    fsTried = true;
+    const el = document.documentElement;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req || document.fullscreenElement) return;
+    try {
+      const p = req.call(el, { navigationUI: 'hide' });
+      const lock = () => { try { screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {}); } catch (e) { /* не поддерживается */ } };
+      if (p && p.then) p.then(lock).catch(() => {}); else lock();
+    } catch (e) { /* полный экран недоступен — играем как есть */ }
+  }
+  document.addEventListener('pointerdown', goFullscreen, { capture: true });
+  document.addEventListener('fullscreenchange', () => { fsTried = !!document.fullscreenElement || fsTried; setTimeout(resize, 120); });
+
+  // безопасные зоны (вырез камеры, скруглённые углы) в логических единицах кадра
+  const safe = { l: 0, r: 0, t: 0, b: 0 };
 
   // ---------- Рекорд ----------
   const HI_KEY = 'claude-spark-runner-hi';
@@ -342,17 +435,27 @@
   function resize() {
     const header = document.querySelector('header');
     const footer = document.querySelector('footer');
-    // кадр всегда 16:9: по ширине контейнера, а если не влезает по высоте — уже
-    stage.style.width = '100%';
-    const availW = stage.clientWidth;
-    const reserved = header.offsetHeight + (footer.offsetParent ? footer.offsetHeight + 10 : 0) + 40;
-    const maxH = Math.max(150, window.innerHeight - reserved);
-    let cssW = availW, cssH = cssW * 9 / 16;
-    if (cssH > maxH) { cssH = maxH; cssW = cssH * 16 / 9; }
-    cssW = Math.floor(cssW); cssH = Math.floor(cssW * 9 / 16);
-    stage.style.width = cssW + 'px';
-    stage.style.height = cssH + 'px';
-    header.style.width = cssW + 'px';
+    let cssW, cssH;
+    if (isPhone) {
+      // телефон: поле на весь экран, без рамок и шапки
+      const vv = window.visualViewport;
+      cssW = Math.floor(vv ? vv.width : window.innerWidth);
+      cssH = Math.floor(vv ? vv.height : window.innerHeight);
+      stage.style.width = cssW + 'px';
+      stage.style.height = cssH + 'px';
+    } else {
+      // кадр всегда 16:9: по ширине контейнера, а если не влезает по высоте — уже
+      stage.style.width = '100%';
+      const availW = stage.clientWidth;
+      const reserved = header.offsetHeight + (footer.offsetParent ? footer.offsetHeight + 10 : 0) + 40;
+      const maxH = Math.max(150, window.innerHeight - reserved);
+      cssW = availW; cssH = cssW * 9 / 16;
+      if (cssH > maxH) { cssH = maxH; cssW = cssH * 16 / 9; }
+      cssW = Math.floor(cssW); cssH = Math.floor(cssW * 9 / 16);
+      stage.style.width = cssW + 'px';
+      stage.style.height = cssH + 'px';
+      header.style.width = cssW + 'px';
+    }
     // качество: рисуем минимум в 2 раза плотнее экрана (сглаженные линии и текст),
     // на плотных экранах — до 3×, но не больше ~8 млн точек, чтобы не тормозило
     let q = Math.max(2, Math.min(window.devicePixelRatio || 1, 3));
@@ -364,6 +467,18 @@
     ctx.imageSmoothingQuality = 'high';
     scale = cssH / VH;
     W = cssW / scale;
+
+    // отступы под вырез камеры и скруглённые углы (на телефоне); переводим из CSS-пикселей в логические
+    const cs = getComputedStyle(document.getElementById('safeProbe'));
+    const corner = isPhone ? 10 : 0;
+    safe.l = (parseFloat(cs.paddingLeft) || 0) / scale + corner;
+    safe.r = (parseFloat(cs.paddingRight) || 0) / scale + corner;
+    safe.t = (parseFloat(cs.paddingTop) || 0) / scale + (isPhone ? 4 : 0);
+    safe.b = (parseFloat(cs.paddingBottom) || 0) / scale;
+    PLAYER_X = PLAYER_X0 + (isPhone ? safe.l : 0);
+
+    // перевернули телефон вертикально — ставим на паузу, пока не вернут
+    if (isPhone && isPortrait() && mode === 'running') pause();
   }
 
   // ---------- Состояние ----------
@@ -624,6 +739,7 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
   window.addEventListener('blur', pause);
   window.addEventListener('resize', resize);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 200));
   stage.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -2525,9 +2641,9 @@
     ctx.closePath();
   }
   function drawLives() {
-    write('ЖИЗНИ', 18, 66, 13, 'left', 0.6);
+    write('ЖИЗНИ', 18 + safe.l, 66, 13, 'left', 0.6);
     for (let i = 0; i < LIVES; i++) {
-      const x = 66 + i * 17, y = 61;
+      const x = 66 + safe.l + i * 17, y = 61;
       heartPath(x, y, 6);
       if (i < lives) {
         ctx.fillStyle = C.line;
@@ -2616,15 +2732,18 @@
 
     // рамка листа, заголовок и счёт
     ink(1.3, 0.8);
-    sRect(6, 6, W - 12, VH - 12);
+    sRect(6 + safe.l, 6 + safe.t, W - 12 - safe.l - safe.r, VH - 12 - safe.t - safe.b);
     ctx.stroke();
-    write('ПЛАН ЗАБЕГА ИСКОРКИ', 18, 30, 19, 'left', 0.95);
-    write('масштаб 1:1', 18, 46, 13, 'left', 0.6);
+    ctx.save();
+    ctx.translate(0, safe.t);
+    write('ПЛАН ЗАБЕГА ИСКОРКИ', 18 + safe.l, 30, 19, 'left', 0.95);
+    write('масштаб 1:1', 18 + safe.l, 46, 13, 'left', 0.6);
     drawLives();
 
     const showScore = !(flash > 0 && Math.floor(flash * 8) % 2 === 0);
-    if (showScore) write('СЧЁТ ' + pad(score || 0), W - 18, 30, 19, 'right', 1);
-    write('РЕКОРД ' + pad(hi), W - 18, 46, 14, 'right', 0.7);
+    if (showScore) write('СЧЁТ ' + pad(score || 0), W - 18 - safe.r, 30, 19, 'right', 1);
+    write('РЕКОРД ' + pad(hi), W - 18 - safe.r, 46, 14, 'right', 0.7);
+    ctx.restore();
   }
 
   // ---------- Преследователь: Ластик ----------
@@ -2868,7 +2987,7 @@
     const edge = eraser.x - eraserHalf() + 6;
     if (edge > 7) {
       ctx.fillStyle = C.bg;
-      ctx.fillRect(7, 74, edge - 7, VH - 81);
+      ctx.fillRect(7, 74 + safe.t, edge - 7, VH - 81 - safe.t);
       // мягкие следы трения у края
       ink(1, 0.18);
       ctx.beginPath();
@@ -3220,6 +3339,32 @@
     [980, 900, 1020, 880].forEach((f, i) => slide(t + i * 0.11, 'triangle', f * 1.08, f * 0.86, 0.08, 0.06, 30));
   }
   function rubSfx() { if (sfxOk()) noiseHit(audio.currentTime, 'bandpass', 1300, 0.7, 0.13, 0.1); }
+
+  // ---------- PWA: офлайн и установка как приложение ----------
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => { /* в песочнице и без HTTPS не получится — игра работает и так */ });
+    });
+  }
+  const installBtn = document.getElementById('installBtn');
+  let installPrompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    installBtn.hidden = false;
+  });
+  installBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    try { await installPrompt.userChoice; } catch (err) { /* закрыли окно */ }
+    installPrompt = null;
+    installBtn.hidden = true;
+  });
+  window.addEventListener('appinstalled', () => { installBtn.hidden = true; installPrompt = null; });
+  // iPhone/iPad: кнопки установки в Safari нет — подсказываем, как добавить на экран «Домой»
+  const standalone = window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches || navigator.standalone;
+  if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !standalone) document.getElementById('iosHint').hidden = false;
 
   // ---------- Цикл ----------
   let last = performance.now();

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <pattern id="g" width="42.67" height="42.67" patternUnits="userSpaceOnUse">
+      <path d="M42.67 0H0V42.67" fill="none" stroke="#5469BC" stroke-width="2"/>
+    </pattern>
+  </defs>
+  <rect width="512" height="512" rx="102" fill="#4B62B6"/>
+  <rect width="512" height="512" rx="102" fill="url(#g)"/>
+  <g transform="translate(256 256)" fill="#5C74C6" stroke="#fff" stroke-width="6" stroke-linejoin="round">
+    <g id="rays">
+      <path d="M-29-12 L-7-194 A7 7 0 0 1 7-194 L29-12 Z" transform="rotate(0)"/>
+      <path d="M-29-12 L-7-136 A7 7 0 0 1 7-136 L29-12 Z" transform="rotate(32)"/>
+      <path d="M-29-12 L-7-179 A7 7 0 0 1 7-179 L29-12 Z" transform="rotate(62)"/>
+      <path d="M-29-12 L-7-124 A7 7 0 0 1 7-124 L29-12 Z" transform="rotate(94)"/>
+      <path d="M-29-12 L-7-187 A7 7 0 0 1 7-187 L29-12 Z" transform="rotate(123)"/>
+      <path d="M-29-12 L-7-144 A7 7 0 0 1 7-144 L29-12 Z" transform="rotate(152)"/>
+      <path d="M-29-12 L-7-167 A7 7 0 0 1 7-167 L29-12 Z" transform="rotate(182)"/>
+      <path d="M-29-12 L-7-128 A7 7 0 0 1 7-128 L29-12 Z" transform="rotate(211)"/>
+      <path d="M-29-12 L-7-191 A7 7 0 0 1 7-191 L29-12 Z" transform="rotate(240)"/>
+      <path d="M-29-12 L-7-140 A7 7 0 0 1 7-140 L29-12 Z" transform="rotate(271)"/>
+      <path d="M-29-12 L-7-175 A7 7 0 0 1 7-175 L29-12 Z" transform="rotate(300)"/>
+      <path d="M-29-12 L-7-120 A7 7 0 0 1 7-120 L29-12 Z" transform="rotate(329)"/>
+    </g>
+    <circle r="82"/>
+  </g>
+  <ellipse cx="246" cy="242" rx="24" ry="32" fill="#fff"/>
+  <ellipse cx="324" cy="242" rx="24" ry="32" fill="#fff"/>
+  <circle cx="254" cy="246" r="14" fill="#3A4D97"/>
+  <circle cx="332" cy="246" r="14" fill="#3A4D97"/>
+</svg>
