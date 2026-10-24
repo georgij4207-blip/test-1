@@ -398,6 +398,7 @@
           'Деплой не ждёт!', 'Я быстрый!', 'Ничего не сломаю!', 'Ещё чуть-чуть!', 'Красота!', 'Вперёд!'],
     milestone: ['Еду дальше!', 'Разгоняюсь!', 'Не остановить!', 'Ещё пятьсот!'],
     bounce: ['Опа!', 'Батут!', 'Боинь!', 'Пружинка!', 'Уи-и-и!'],
+    tickled: ['Ой-ой-ой, он меня догоняет!'],
     rope: ['Тихо-тихо…', 'Не смотреть вниз!', 'Баланс!', 'Ой-ой-ой…', 'Шажок за шажком', 'Я канатоходец!'],
     flip: ['Сальто!', 'Оп-ля-ля!', 'Акробатика!', 'Кувырок!', 'Хоба!', 'Йу-ху!'],
     revive: ['Я в порядке!', 'Ещё живой!', 'Не считается!', 'Пф, царапина!', 'Перезапуск!', 'Ой! Но я цел!'],
@@ -1097,6 +1098,7 @@
     if (player.spin > 0 && player.onGround) tiltTarget = 0.3;   // пробуксовывая, наклоняется вперёд, как перед рывком
     if (player.onRope) tiltTarget = Math.sin(T * 2.6) * 0.2 + Math.sin(T * 5.3) * 0.05;   // балансирует
     player.tilt += (tiltTarget - player.tilt) * Math.min(1, dt * 8);
+    if (eraser.tickle > 0) player.tilt = Math.sin(T * 30) * 0.13 + Math.sin(T * 17) * 0.06;   // ёрзает от щекотки
 
     if (mode === 'ready') {
       player.bottom = groundY(player.x);
@@ -1372,6 +1374,7 @@
     puff(player.x, player.bottom, 10);
     const o = h.o;
     o.x = player.x - (o.w || 30) - 40;
+    o.eSkip = true;
     // убираем то, что стоит вплотную впереди, чтобы не врезаться сразу снова
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const q = obstacles[i];
@@ -1832,6 +1835,7 @@
     if (ducking) ry *= 0.65;
     if (airborne && player.blinkT <= 0) ry = 3.8;
     if (caught) ry = 4.2;   // глаза круглые от ужаса
+    if (eraser.tickle > 0) ry = 1.3;   // зажмурилась от щекотки
     const dizzy = dead || stunned;
     const eyeMode = stunned ? 'spiral' : dead ? 'rolled' : '';
     if (dizzy) drawDizzy(x, cy - R * 1.3, false);   // задняя половина хоровода — за головой
@@ -2633,10 +2637,13 @@
     win: ['Ага!', 'Почти!', 'Ну погоди!'],
     near: ['Ближе, ближе…', 'Хе-хе!', 'Я иду-у-у!'],
     catch: ['Попалась!', 'Хе-хе, стёрто!'],
+    giggle: ['Хи-хи-хи!', 'Хи-хи-хи-хи!'],
+    trip: ['Ой!', 'Кто тут поставил?!', 'Уф…', 'Не считается!'],
   };
   const eraser = {
     x: -80, dist: 210, off: 0, offTarget: 0, offRate: 0.8, step: 0, gadget: null, nextGadget: 9,
     forceX: null, squash: 0, pulling: false, sayText: '', sayT: 0, fx: [],
+    yOff: 0, vy: 0, onGround: true, landSq: 0, sqV: 0, trip: 0, tickle: 0, tickleCd: 0, kickT: 0,
   };
   let crumbs = [];
 
@@ -2644,6 +2651,7 @@
     Object.assign(eraser, {
       dist: 210, off: 0, offTarget: 0, offRate: 0.8, gadget: null, nextGadget: rand(7, 11),
       forceX: null, squash: 0, pulling: false, sayT: 0, fx: [],
+      yOff: 0, vy: 0, onGround: true, landSq: 0, sqV: 0, trip: 0, tickle: 0, tickleCd: 3, kickT: 0,
     });
     crumbs = [];
     player.erased = false;
@@ -2691,6 +2699,43 @@
       if (c.x < 0) crumbs.splice(i, 1);
     }
 
+    // прыжки через препятствия — та же физика, что у Искорки; иногда не успевает и спотыкается
+    if (mode === 'running' && !hitSeq) eraserObstacles(worldSpeed);
+    if (!eraser.onGround) {
+      eraser.vy += GRAVITY * dt;
+      eraser.yOff -= eraser.vy * dt;
+      if (eraser.yOff <= 0) {
+        eraser.yOff = 0; eraser.vy = 0; eraser.onGround = true;
+        eraser.landSq = 0.45;   // плюх — сплющивается при приземлении
+        if (sfxOk()) blip(audio.currentTime, 'sine', 200, 70, 0.18, 0.12);
+      }
+    }
+    eraser.sqV += (-150 * eraser.landSq - 10 * eraser.sqV) * dt;
+    eraser.landSq = clamp(eraser.landSq + eraser.sqV * dt, -0.35, 0.5);
+    if (eraser.trip > 0) {
+      eraser.trip -= dt;
+      if (eraser.trip <= 0) { eraser.offTarget = 0; eraser.offRate = 0.5; }
+    }
+
+    // совсем близко — вытягивает ручки и щекочет Искорку
+    eraser.tickleCd = Math.max(0, eraser.tickleCd - dt);
+    const gapToPlayer = (player.x - R * PS * 0.8) - (eraser.x + eraserHalf());
+    const canTickle = mode === 'running' && !hitSeq && !eraser.gadget && eraser.trip <= 0 && eraser.onGround &&
+      player.onGround && !(player.spin > 0) && gapToPlayer < 30;
+    if (eraser.tickle > 0) {
+      eraser.tickle = canTickle ? eraser.tickle - dt : 0;
+      eraser.kickT -= dt;
+      if (eraser.kickT <= 0) { kickRays(0.9, 3 * (Math.random() < 0.5 ? -1 : 1)); eraser.kickT = 0.07; }   // лучики дрожат
+      if (eraser.tickle > 0 && eraser.tickle < 0.9 && !eraser.giggled2) { eraser.giggled2 = true; giggleSfx(); }
+    } else if (canTickle && eraser.tickleCd <= 0) {
+      eraser.tickle = 1.8;
+      eraser.tickleCd = 5.5;
+      eraser.giggled2 = false;
+      eraserSay('giggle');
+      giggleSfx();
+      say('tickled', 2, 1, 0);
+    }
+
     // дурацкие изобретения
     if (mode === 'running' && !hitSeq) {
       if (!eraser.gadget && !(player.spin > 0)) {
@@ -2698,6 +2743,29 @@
         if (eraser.nextGadget <= 0) startGadget();
       }
       if (eraser.gadget) updateGadget(dt);
+    }
+  }
+
+  function eraserObstacles(worldSpeed) {
+    const front = eraser.x + eraserHalf(), back = eraser.x - eraserHalf();
+    for (const o of obstacles) {
+      if (o.type === 'error' || o.kind === 'rope' || o.eSkip) continue;
+      // решаем заранее: прыгнуть или (для смеха) не успеть
+      if (!o.eSeen && o.x - front < worldSpeed * 0.17 + 8 && o.x + o.w > back) {
+        o.eSeen = true;
+        o.eTrip = !eraser.gadget && Math.random() < 0.2;
+        if (!o.eTrip && eraser.onGround && eraser.trip <= 0) {
+          eraser.vy = JUMP_V; eraser.onGround = false; eraser.landSq = -0.3;
+        }
+      }
+      // не успел: врезался и шлёпнулся носом вперёд
+      if (o.eTrip && !o.eDone && eraser.onGround && o.x < front - 4 && o.x + o.w > back) {
+        o.eDone = true;
+        eraser.trip = 1.2;
+        eraser.offTarget = 75; eraser.offRate = 1.6;   // отстаёт
+        eraserSay('trip');
+        if (sfxOk()) { const t = audio.currentTime; blip(t, 'triangle', 500, 120, 0.15, 0.2); noiseHit(t, 'lowpass', 700, 0.7, 0.12, 0.1); }
+      }
     }
   }
 
@@ -2950,12 +3018,18 @@
     if (eraser.x < -60 || eraser.x > W + 60) { drawEraserFx(); return; }
     const g = eraser.gadget;
     const gy = groundY(eraser.x);
-    const bob = Math.abs(Math.sin(eraser.step)) * 1.5;
+    const bob = eraser.onGround && eraser.trip <= 0 ? Math.abs(Math.sin(eraser.step)) * 1.5 : 0;
     ctx.save();
-    ctx.translate(eraser.x, gy - bob);
+    ctx.translate(eraser.x, gy - bob - eraser.yOff);
     ctx.scale(ES, ES);
     inkScale = ES;
     ctx.rotate(0.08);   // бежит, наклонившись вперёд
+    if (eraser.trip > 0) {
+      // споткнулся: падает носом вперёд, лежит, поднимается
+      const tt = 1.2 - eraser.trip;
+      const ang = tt < 0.2 ? 1.35 * tt / 0.2 : tt < 0.8 ? 1.35 : 1.35 * (1 - (tt - 0.8) / 0.4);
+      ctx.translate(EW / 2, 0); ctx.rotate(ang); ctx.translate(-EW / 2, 0);
+    }
 
     let riding = false;
     if (g && g.type === 'rocket' && !g.boom) {
@@ -2977,7 +3051,36 @@
       }
       ctx.translate(0, -12);
     }
-    if (!(g && g.type === 'rocket' && g.boom)) drawEraserBody(eraser.squash);
+    if (!(g && g.type === 'rocket' && g.boom)) drawEraserBody(eraser.squash + eraser.landSq * 0.6);
+
+    // ручки-щекоталки тянутся к Искорке
+    if (eraser.tickle > 0) {
+      const reach = clamp((1.8 - eraser.tickle) / 0.25, 0, 1);
+      const baseY = gy - bob - eraser.yOff;
+      const top = -ELEG - EH;
+      const arms = [[top + EH * 0.55, player.bottom - 24 * PS], [top + EH * 0.8, player.bottom - 12 * PS]];
+      arms.forEach(([sy, ty], i) => {
+        const sx = EW / 2 - 1;
+        const tx = (player.x - 13 * PS - eraser.x) / ES, tyl = (ty - baseY) / ES;
+        const ex = sx + (tx - sx) * reach + Math.sin(T * 26 + i * 2) * 1.5;
+        const ey = sy + (tyl - sy) * reach + Math.cos(T * 31 + i) * 1.5;
+        ink(1.6);
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.quadraticCurveTo((sx + ex) / 2, Math.min(sy, ey) - 8, ex, ey);   // «резиновая» ручка дугой
+        ctx.stroke();
+        // ладошка и шевелящиеся пальчики
+        ctx.beginPath(); ctx.arc(ex, ey, 2.4, 0, Math.PI * 2); paper(C.body); ctx.stroke();
+        ink(1.2);
+        ctx.beginPath();
+        for (let f = -1; f <= 1; f++) {
+          const a = f * 0.55 + Math.sin(T * 40 + f * 1.7 + i) * 0.45;
+          ctx.moveTo(ex + Math.cos(a) * 2.2, ey + Math.sin(a) * 2.2);
+          ctx.lineTo(ex + Math.cos(a) * 5.2, ey + Math.sin(a) * 5.2);
+        }
+        ctx.stroke();
+      });
+    }
 
     const topY = -(riding ? 0 : 0) - ELEG - EH;
     if (g && g.type === 'magnet') {
@@ -3052,7 +3155,7 @@
       ctx.font = '15px ' + FONT;
       const tw = ctx.measureText(eraser.sayText).width;
       const bw = tw + 14, bh = 21;
-      const tipX = eraser.x + 6, tipY = gy - (ELEG + EH) * ES - 8;
+      const tipX = eraser.x + 6, tipY = gy - eraser.yOff - (ELEG + EH) * ES - 8;
       const bx = clamp(eraser.x - 6, 10, W - bw - 10), by = tipY - 8 - bh;
       ink(1.6);
       roundRect(bx, by, bw, bh, 9); paper(); ctx.stroke();
@@ -3109,6 +3212,12 @@
     const t = audio.currentTime;
     noiseHit(t, 'lowpass', 900, 0.7, 0.3, 0.1);
     blip(t, 'sine', 170, 55, 0.32, 0.16);
+  }
+  // злорадное «хи-хи-хи»
+  function giggleSfx() {
+    if (!sfxOk()) return;
+    const t = audio.currentTime;
+    [980, 900, 1020, 880].forEach((f, i) => slide(t + i * 0.11, 'triangle', f * 1.08, f * 0.86, 0.08, 0.06, 30));
   }
   function rubSfx() { if (sfxOk()) noiseHit(audio.currentTime, 'bandpass', 1300, 0.7, 0.13, 0.1); }
 
