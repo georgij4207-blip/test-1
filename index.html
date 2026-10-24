@@ -351,7 +351,7 @@
           </ul>
           <h3>Жизни</h3>
           <ul class="rules">
-            <li>Три запасные жизни. Любой удар отнимает одну — с мультяшной реакцией, и Искорка бежит дальше.</li>
+            <li>Три сердечка — шесть жизней. Любой удар отнимает половинку сердечка — с мультяшной реакцией, и Искорка бежит дальше.</li>
             <li>Приземлились на препятствие сверху — отскок и <b>+25 очков</b>.</li>
           </ul>
           <h3>Ластик</h3>
@@ -610,7 +610,9 @@
     step: 0, spread: 0, blink: 2.5, blinkT: 0, slope: 0, tilt: 0,
   };
   let moveSpeed = 0;   // фактическая скорость с учётом склона
-  const LIVES = 3;     // запасные жизни
+  const LIVES = 6;     // жизни: 3 сердечка по две половинки
+  const HEARTS = LIVES / 2;
+  let heartFx = [];    // отлетающие половинки сердечек
   let lives = LIVES, invuln = 0;
   // Мультяшная реакция на удар: отлёт назад → оглушение → встряска → «бах!» и дальше
   const HIT = { knock: 0.45, stun: 1.45, shake: 3.0, rise: 0.45 };   // rise — сколько встаёт в начале встряски   // границы фаз, секунды от удара
@@ -682,7 +684,7 @@
     obstacles = []; particles = [];
     player.bottom = groundY(player.x); player.vy = 0; player.onGround = true;
     player.slope = 0; player.tilt = 0;
-    lives = LIVES; invuln = 0; hitSeq = null; player.x = PLAYER_X;
+    lives = LIVES; invuln = 0; hitSeq = null; player.x = PLAYER_X; heartFx = [];
     player.onRope = null; player.ropeK = 1;
     player.flipT = 0; player.flipAng = 0;
     player.windup = 0; player.dbl = false; player.flutter = 0; player.coyote = 0; player.buffer = 0;
@@ -1662,7 +1664,7 @@
         sinceSpawn = 0;
         const desert = locAt(W + 30) === 0 && !tut;   // в пустыне препятствия чаще
         const minGap = speed * (desert ? 0.64 : 0.72) + width + (desert ? 55 : 70);
-        nextGap = minGap + Math.random() * speed * (desert ? 0.45 : 0.7);
+        nextGap = (minGap + Math.random() * speed * (desert ? 0.45 : 0.7)) * 1.27;   // просторнее, с разбросом
       }
     }
 
@@ -1793,8 +1795,8 @@
   function startHit(o) {
     const rk = REACT[o.kind] || REACT[o.type];
     if (rk) { startReact(o, rk); return; }   // у препятствий локаций — своя мультяшная реакция
-    const last = lives === 0;
-    if (!last) lives--;
+    const last = lives <= 1;   // последняя половинка — Ластик догоняет
+    loseHalf();
     hitSeq = { t: 0, o, last, nextKick: 0 };
     o.passed = true;
     shake = 0.45;            // лёгкая тряска
@@ -1811,7 +1813,7 @@
     kickRays(5, 12);
     bonkSfx();
     say('hit', 3, 1, 0);
-    if (!last) popups.push({ x: player.x + 36, y: player.bottom - 94, t: 0.9, text: '−1 ♥' });
+    if (!last) popups.push({ x: player.x + 36, y: player.bottom - 94, t: 0.9, text: '−½ ♥' });
     if (eraser.gadget) endGadget();
     if (!last && eraser.mode === 'chase') { eraserSay('near', 0.5); eraser.chaseT += 8; }   // гонится дольше
   }
@@ -3109,19 +3111,99 @@
     ctx.bezierCurveTo(x + r * 0.9, y - r * 1.1, x + r * 1.3, y, x, y + r * 0.9);
     ctx.closePath();
   }
+  const heartX = (i) => 68 + safe.l + i * 19, HEART_Y = 61, HEART_R = 7;
+  // трещина посередине сердечка — зигзаг сверху вниз
+  function crackPath(x, y, r) {
+    const pts = [[x, y - r * 0.35], [x - r * 0.18, y - r * 0.05], [x + r * 0.16, y + r * 0.25], [x - r * 0.1, y + r * 0.55], [x, y + r * 0.9]];
+    return pts;
+  }
+  // половинка сердечка: обводим свою сторону и рваный край по трещине
+  function halfHeartPath(x, y, r, side) {
+    const c = crackPath(x, y, r);
+    ctx.beginPath();
+    if (side < 0) {
+      ctx.moveTo(x, y + r * 0.9);
+      ctx.bezierCurveTo(x - r * 1.3, y, x - r * 0.9, y - r * 1.1, x, y - r * 0.35);
+    } else {
+      ctx.moveTo(x, y - r * 0.35);
+      ctx.bezierCurveTo(x + r * 0.9, y - r * 1.1, x + r * 1.3, y, x, y + r * 0.9);
+    }
+    const seq = side < 0 ? c : c.slice().reverse();
+    for (const [px, py] of seq) ctx.lineTo(px, py);
+    ctx.closePath();
+  }
+  // лишилась половинки: она откалывается от сердечка и отлетает, кувыркаясь
+  function loseHalf() {
+    lives = Math.max(0, lives - 1);
+    const i = Math.floor(lives / 2), side = lives % 2 ? 1 : -1;   // от целого отлетает правая, от половинки — левая
+    heartFx.push({ i, x: heartX(i), y: HEART_Y, side, vx: side * rand(60, 110), vy: rand(-170, -120), rot: 0, vr: side * rand(6, 10), t: 0 });
+    heartFx.shakeI = i; heartFx.shakeT = 0.4;
+  }
+  function updateHeartFx(dt) {
+    for (let k = heartFx.length - 1; k >= 0; k--) {
+      const f = heartFx[k];
+      f.t += dt; f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 520 * dt; f.rot += f.vr * dt;
+      if (f.t > 1.1) heartFx.splice(k, 1);
+    }
+    heartFx.shakeT = Math.max(0, (heartFx.shakeT || 0) - dt);
+  }
   function drawLives() {
     write('ЖИЗНИ', 18 + safe.l, 66, 13, 'left', 0.6);
-    for (let i = 0; i < LIVES; i++) {
-      const x = 66 + safe.l + i * 17, y = 61;
-      heartPath(x, y, 6);
-      if (i < lives) {
+    for (let i = 0; i < HEARTS; i++) {
+      const left = lives - i * 2;   // сколько половинок осталось в этом сердечке: 2, 1 или 0
+      let x = heartX(i);
+      const y = HEART_Y, r = HEART_R;
+      if (heartFx.shakeT > 0 && heartFx.shakeI === i) x += Math.sin(heartFx.shakeT * 60) * 2.2 * heartFx.shakeT / 0.4;
+      // пустой контур — пунктиром
+      heartPath(x, y, r);
+      ink(1.2, 0.5);
+      ctx.setLineDash([2, 2]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (left >= 2) {
+        heartPath(x, y, r);
         ctx.fillStyle = C.line;
         ctx.fill();
-      } else {
-        ink(1.2, 0.5);
-        ctx.setLineDash([2, 2]);
+      } else if (left === 1) {
+        halfHeartPath(x, y, r, -1);
+        ctx.fillStyle = C.line;
+        ctx.fill();
+        ink(1.2);
         ctx.stroke();
-        ctx.setLineDash([]);
+      }
+    }
+    // отлетающие половинки: с трещиной, кувыркаются и тают
+    for (const f of heartFx) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - f.t / 1.1);
+      ctx.translate(f.x, f.y);
+      ctx.rotate(f.rot);
+      const grow = 1 + Math.min(1, f.t / 0.3) * 0.45;   // осколок «подлетает к зрителю»
+      ctx.scale(grow, grow);
+      ctx.translate(-f.x, -f.y);
+      halfHeartPath(f.x, f.y, HEART_R, f.side);
+      ctx.fillStyle = C.line;
+      ctx.fill();
+      ink(1.2);
+      ctx.stroke();
+      // штрихи «скорости» за осколком
+      ink(1, 0.6);
+      ctx.beginPath();
+      ctx.moveTo(f.x - f.side * 10, f.y - 3); ctx.lineTo(f.x - f.side * 16, f.y - 4);
+      ctx.moveTo(f.x - f.side * 10, f.y + 2); ctx.lineTo(f.x - f.side * 15, f.y + 2);
+      ctx.stroke();
+      ctx.restore();
+      // в первый миг — искорка-вспышка на месте скола
+      if (f.t < 0.15) {
+        const k = f.t / 0.15;
+        ink(1.3, 1 - k);
+        ctx.beginPath();
+        for (let a = 0; a < 6; a++) {
+          const ang = a * Math.PI / 3 + 0.3;
+          ctx.moveTo(heartX(f.i) + Math.cos(ang) * (4 + k * 6), HEART_Y + Math.sin(ang) * (4 + k * 6));
+          ctx.lineTo(heartX(f.i) + Math.cos(ang) * (8 + k * 9), HEART_Y + Math.sin(ang) * (8 + k * 9));
+        }
+        ctx.stroke();
       }
     }
   }
@@ -3664,15 +3746,15 @@
   }
 
   function startReact(o, kind) {
-    const last = lives === 0;
-    if (!last) lives--;
+    const last = lives <= 1;   // последняя половинка — Ластик догоняет
+    loseHalf();
     hitSeq = { t: 0, o, last, kind, speedK: 0, ev: {} };
     o.passed = true;
     player.windup = 0; player.buffer = 0; player.flutter = 0;
     player.duck = false; player.fastFall = false;
     player.flipT = 0; player.flipAng = 0;
     if (player.ride) endRide(false);
-    if (!last) popups.push({ x: player.x + 36, y: player.bottom - 94, t: 0.9, text: '−1 ♥' });
+    if (!last) popups.push({ x: player.x + 36, y: player.bottom - 94, t: 0.9, text: '−½ ♥' });
     if (eraser.gadget) endGadget();
     if (!last && eraser.mode === 'chase') { eraserSay('near', 0.5); eraser.chaseT += 8; }
     REACTS[kind].start(hitSeq, o);
@@ -5049,7 +5131,8 @@
   const EW = 38, EH = 26, ES = 1.625, ELEG = 7;         // размеры Ластика (до масштаба ES)
   // дистанция до Искорки в долях ширины кадра по числу запасных жизней: 20% → 17% → 13% → вплотную
   const ERASER_DIST = [0.10, 0.13, 0.17, 0.20];
-  const eraserDist = (l) => Math.max(58, W * ERASER_DIST[clamp(l, 0, 3)]);
+  // 6 половинок → 4 ступени дистанции: чем меньше осталось, тем ближе
+  const eraserDist = (l) => Math.max(58, W * ERASER_DIST[clamp(Math.round((l - 1) * 3 / (LIVES - 1)), 0, 3)]);
   const ERASER_LINES = {
     plan: ['Хе-хе-хе…', 'Сейчас как…', 'Гениально!', 'Изобретение №42!', 'План надёжный!'],
     fail: ['Ой.', 'Опять?!', 'Не тот провод…', 'Ай-ай-ай!', 'Так и задумано…'],
@@ -6307,6 +6390,7 @@
       dt *= slowmo > 0.12 ? 0.3 : 0.3 + (0.12 - Math.max(0, slowmo)) / 0.12 * 0.7;
     }
     update(dt);
+    updateHeartFx(real);
     draw(now / 1000);
     requestAnimationFrame(frame);
   }
