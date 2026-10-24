@@ -374,9 +374,8 @@
     return vy > 0 ? GRAVITY * 1.55 : GRAVITY;
   }
   let hitStop = 0, impact = null, slowmo = 0;   // ударный кадр, замирание и слоу-мо
-  const PLAYER_X0 = 165;     // правее, чтобы сзади хватало места Ластику
-  let PLAYER_X = PLAYER_X0;  // на телефоне сдвигается от выреза камеры
-  const PS = 1.5;           // масштаб персонажа: рисунок и зона столкновения
+  let PLAYER_X = 228;       // Искорка стоит на 40% ширины кадра — пересчитывается в resize()
+  const PS = 1.95;          // масштаб персонажа: рисунок и зона столкновения (крупнее, чтобы мимика читалась на телефоне)
 
   // ---------- Рельеф: бесконечные плавные холмы ----------
   // Сглаженный «шум»: случайные высоты в узлах сетки, плавно сшитые между собой.
@@ -486,7 +485,8 @@
     safe.r = (parseFloat(cs.paddingRight) || 0) / scale + corner;
     safe.t = (parseFloat(cs.paddingTop) || 0) / scale + (isPhone ? 4 : 0);
     safe.b = (parseFloat(cs.paddingBottom) || 0) / scale;
-    PLAYER_X = PLAYER_X0 + (isPhone ? safe.l : 0);
+    // композиция: Искорка на 40% ширины кадра, но не ближе к вырезу камеры, чем нужно Ластику сзади
+    PLAYER_X = Math.round(Math.max(W * 0.4, safe.l + 130));
 
     // перевернули телефон вертикально — ставим на паузу, пока не вернут
     if (isPhone && isPortrait() && mode === 'running') pause();
@@ -1130,7 +1130,7 @@
     if (canFly && r < 0.28) {
       // летающая ошибка: низко (прыгать), средне (пригнуться), высоко (пробежать)
       // высота полёта считается от земли под препятствием
-      const alt = pick([16, 42, 42, 76]);
+      const alt = pick([16, 42, 42, 100]);   // верхние летят выше — под ними по-прежнему можно пробежать
       obstacles.push({
         type: 'error', kind: pick(['err', 'err', 'err', 'warn', 'warn', 'bug', 'bug', 'plane', 'clock']),
         x, y: groundY(x) - alt, alt, w: 34, h: 26, phase: Math.random() * 6, extra: rand(0.06, 0.16),
@@ -1320,6 +1320,8 @@
       if (eraser.pulling) player.x = Math.max(PLAYER_X - 32, player.x - 34 * dt);   // магнит Ластика тянет назад
       else if (player.x < PLAYER_X) {
         player.x = Math.min(PLAYER_X, player.x + (PLAYER_X - player.x) * dt * 5 + dt * 10);   // догоняет своё место
+      } else if (player.x > PLAYER_X) {
+        player.x = Math.max(PLAYER_X, player.x - (player.x - PLAYER_X) * dt * 3 - dt * 6);    // экран сузился — плавно отходит
       }
     }
 
@@ -1483,7 +1485,7 @@
       o.bounced = true;
       o.passed = true;
       dist += BOUNCE_BONUS * 40;
-      popups.push({ x: player.x + 28, y: player.bottom - 68, t: 0.9, text: '+' + BOUNCE_BONUS });
+      popups.push({ x: player.x + 36, y: player.bottom - 88, t: 0.9, text: '+' + BOUNCE_BONUS });
     }
   }
 
@@ -1512,7 +1514,7 @@
     kickRays(5, 12);
     bonkSfx();
     say('hit', 3, 1, 0);
-    if (!last) popups.push({ x: player.x + 28, y: player.bottom - 72, t: 0.9, text: '−1 ♥' });
+    if (!last) popups.push({ x: player.x + 36, y: player.bottom - 94, t: 0.9, text: '−1 ♥' });
     if (eraser.gadget) endGadget();
     if (!last && eraser.mode === 'chase') { eraserSay('near', 0.5); eraser.chaseT += 8; }   // гонится дольше
   }
@@ -1566,7 +1568,7 @@
     kickRays(5, 6);
     bangSound();
     say('revive', 3, 1, 0);
-    popups.push({ x: player.x + 24, y: player.bottom - 76, t: 0.8, text: 'БАХ!', size: 26 });
+    popups.push({ x: player.x + 32, y: player.bottom - 98, t: 0.8, text: 'БАХ!', size: 26 });
     puff(player.x, player.bottom, 10);
     const o = h.o;
     o.x = player.x - (o.w || 30) - 40;
@@ -2880,8 +2882,10 @@
 
   // ---------- Преследователь: Ластик ----------
   // Гонится сзади, роняя катышки. Чем меньше у Искорки жизней, тем он ближе.
-  const EW = 38, EH = 26, ES = 1.25, ELEG = 7;          // размеры Ластика (до масштаба ES)
-  const ERASER_DIST = [40, 64, 90, 116];               // дистанция до Искорки по числу запасных жизней
+  const EW = 38, EH = 26, ES = 1.625, ELEG = 7;         // размеры Ластика (до масштаба ES)
+  // дистанция до Искорки в долях ширины кадра по числу запасных жизней: 20% → 17% → 13% → вплотную
+  const ERASER_DIST = [0.10, 0.13, 0.17, 0.20];
+  const eraserDist = (l) => Math.max(58, W * ERASER_DIST[clamp(l, 0, 3)]);
   const ERASER_LINES = {
     plan: ['Хе-хе-хе…', 'Сейчас как…', 'Гениально!', 'Изобретение №42!', 'План надёжный!'],
     fail: ['Ой.', 'Опять?!', 'Не тот провод…', 'Ай-ай-ай!', 'Так и задумано…'],
@@ -2907,7 +2911,7 @@
       dist: 210, off: 0, offTarget: 0, offRate: 0.8, gadget: null, nextGadget: rand(7, 11),
       forceX: null, squash: 0, pulling: false, sayT: 0, fx: [],
       yOff: 0, vy: 0, onGround: true, landSq: 0, sqV: 0, trip: 0, tickle: 0, tickleCd: 3, kickT: 0,
-      expr: '', exprT: 0, shownExpr: 'sly', pendingWow: 0,
+      expr: '', exprT: 0, shownExpr: 'sly', pendingWow: 0, entering: true,
       mode: 'chase', chaseT: rand(20, 30), face: 1, lt: 0, fly: 0, flyV: 0, baseX: 0, awayFrom: 0, etype: '', hintT: 0, crestWX: 0,
     });
     crumbs = [];
@@ -2952,12 +2956,18 @@
   const awayMeters = () => Math.max(150, 400 - (eraserLevel() - 1) * 50);
 
   function updateEraser(dt, worldSpeed) {
-    const target = ERASER_DIST[clamp(lives, 0, 3)];
+    const target = eraserDist(lives);
     const approaching = Math.abs(target - eraser.dist) > 2;
     eraser.dist += (target - eraser.dist) * Math.min(1, dt * 0.9);
     eraser.off += (eraser.offTarget - eraser.off) * Math.min(1, dt * eraser.offRate);
     if (eraser.mode === 'chase') {
-      if (eraser.forceX === null) eraser.x = player.x - eraser.dist - eraser.off;
+      if (eraser.forceX === null) {
+        eraser.x = player.x - eraser.dist - eraser.off;
+        // никогда не уходит за левый край кадра (с отступом от выреза камеры); вбегая слева — можно
+        const edge = safe.l + 10 + eraserHalf();
+        if (eraser.entering) { if (eraser.x >= edge) eraser.entering = false; }
+        else eraser.x = Math.max(eraser.x, edge);
+      }
       // погоня длится 20–30 секунд, потом Ластик улетает на ракете
       if (mode === 'running' && !hitSeq) {
         eraser.chaseT -= dt;
@@ -3179,6 +3189,7 @@
     if (r < 0.34) {
       eraser.mode = 'chase'; eraser.face = 1;
       eraser.dist = 230; eraser.off = 0; eraser.offTarget = 0;   // вбегает слева
+      eraser.entering = true;
       eraser.x = player.x - 230;
       eraser.chaseT = rand(20, 30);
       setExpr('scheme', 1.0);      // сначала хитро потирает ручки,
