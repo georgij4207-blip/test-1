@@ -223,6 +223,7 @@
         <li><b>Офисный хлам на земле</b> — стопки бумаг, блоки кода, кружки, мониторы, коробки, клавиатуры, кактусы и конусы — нужно перепрыгнуть.</li>
         <li><b>Летающие помехи</b> — ошибки, жуки-баги, бумажные самолётики и часы-дедлайны — появляются после 180 очков. Через низкие прыгайте, под средними пригибайтесь, под высокими можно просто пробежать.</li>
         <li><b>Обрывы, речки и сломанные мосты</b> — провалы в земле: их нужно перепрыгнуть, и Искорка пролетит над ними сальто — вперёд или назад, как получится. Не прыгнули — споткнётесь на краю.</li>
+        <li><b>Канат над провалом.</b> Прыгать не нужно: Искорка сама медленно пройдёт по канату, балансируя.</li>
         <li><b>Батут.</b> Если приземлиться на препятствие сверху, Искорка отскочит и получит <b>+25 очков</b>.</li>
         <li><b>Три запасные жизни.</b> Удар сбоку или снизу отнимает одну: Искорка отлетает, сидит оглушённая, встряхивается и бежит дальше. Когда запасные жизни кончатся, следующий удар заканчивает игру.</li>
         <li>Очки идут за пройденное расстояние. Скорость постепенно растёт. Рекорд сохраняется в браузере.</li>
@@ -396,6 +397,7 @@
           'Деплой не ждёт!', 'Я быстрый!', 'Ничего не сломаю!', 'Ещё чуть-чуть!', 'Красота!', 'Вперёд!'],
     milestone: ['Еду дальше!', 'Разгоняюсь!', 'Не остановить!', 'Ещё пятьсот!'],
     bounce: ['Опа!', 'Батут!', 'Боинь!', 'Пружинка!', 'Уи-и-и!'],
+    rope: ['Тихо-тихо…', 'Не смотреть вниз!', 'Баланс!', 'Ой-ой-ой…', 'Шажок за шажком', 'Я канатоходец!'],
     flip: ['Сальто!', 'Оп-ля-ля!', 'Акробатика!', 'Кувырок!', 'Хоба!', 'Йу-ху!'],
     revive: ['Я в порядке!', 'Ещё живой!', 'Не считается!', 'Пф, царапина!', 'Перезапуск!', 'Ой! Но я цел!'],
   };
@@ -430,6 +432,7 @@
     player.bottom = groundY(player.x); player.vy = 0; player.onGround = true;
     player.slope = 0; player.tilt = 0;
     lives = LIVES; invuln = 0; hitSeq = null; player.x = PLAYER_X;
+    player.onRope = null; player.ropeK = 1;
     player.flipT = 0; player.flipAng = 0;
     player.spin = 0; player.launch = 0;
     player.duck = false; player.jumpHeld = false; player.fastFall = false;
@@ -491,7 +494,7 @@
       say('jump', 0, 0.12, 3);
       jumpSfx();
       // впереди провал — сразу закручиваем сальто на весь полёт
-      const gap = obstacles.find((o) => o.type === 'gap' && o.x + o.w > player.x && o.x - player.x < 170);
+      const gap = obstacles.find((o) => o.type === 'gap' && o.kind !== 'rope' && o.x + o.w > player.x && o.x - player.x < 170);
       if (gap) startFlip((2 * -JUMP_V / GRAVITY) * 0.92);
     }
   }
@@ -899,10 +902,29 @@
     cliff: ['ОБРЫВ (ГЛУБОКО)', 'НЕ СМОТРЕТЬ ВНИЗ', 'ДНО НЕ НАЙДЕНО'],
     river: ['РЕЧКА (МОКРО)', 'РЫБА ЕСТЬ', 'БРОДА НЕТ'],
     bridge: ['МОСТ (ПОЧТИ)', 'РЕМОНТ С 2019', 'НА СВОЙ РИСК'],
+    rope: ['КАНАТ (НАДЁЖНЫЙ?)', 'ИДТИ МЕДЛЕННО', 'ЦИРК УЕХАЛ, КАНАТ ОСТАЛСЯ'],
   };
   let noteNo = 0;
   function maybeNote(o) {
     if (Math.random() < 0.4) o.note = (++noteNo) + '. ' + pick(NOTES[o.kind] || NOTES[o.type]);
+  }
+
+  // Канат над провалом: натянут от края до края, слегка провисает и прогибается под Искоркой
+  function ropeY(o, sx) {
+    const u = clamp((sx - o.x) / o.w, 0, 1);
+    const y0 = groundY(o.x), y1 = groundY(o.x + o.w);
+    let y = y0 + (y1 - y0) * u - 1 + 4 * Math.sin(Math.PI * u);
+    if (player.onRope === o) {
+      const d = (sx - player.x) / 16;
+      y += 6 * Math.sqrt(Math.sin(Math.PI * clamp((player.x - o.x) / o.w, 0, 1))) * Math.exp(-d * d);
+    }
+    return y;
+  }
+  const ropeAt = (sx) => obstacles.find((o) => o.kind === 'rope' && sx >= o.x && sx <= o.x + o.w);
+  // на чём стоит Искорка: на канате или на земле
+  function surfaceY(sx) {
+    const r = ropeAt(sx);
+    return r ? ropeY(r, sx) : groundY(sx);
   }
 
   // Наземное препятствие ставим на рельеф и наклоняем по склону
@@ -936,8 +958,8 @@
     const type = pick(types);
     if (type === 'gap') {
       // провал в земле: обрыв, речка или сломанный мост
-      const kind = pick(['cliff', 'river', 'bridge']);
-      const w = kind === 'cliff' ? rand(50, 76) : kind === 'river' ? rand(58, 84) : rand(66, 90);
+      const kind = pick(['cliff', 'river', 'bridge', 'rope']);
+      const w = kind === 'cliff' ? rand(50, 76) : kind === 'river' ? rand(58, 84) : kind === 'bridge' ? rand(66, 90) : rand(120, 160);
       const o = { type: 'gap', kind, x, w, h: 0, seed: Math.random() * 1000 };
       o.gy = groundY(x + w / 2); o.y = o.gy;
       obstacles.push(o);
@@ -1047,6 +1069,7 @@
     player.slope += (slopeAt(player.x) - player.slope) * Math.min(1, dt * 8);
     let tiltTarget = player.onGround && mode !== 'over' ? clamp(-player.slope * 2.2, -0.18, 0.35) : 0;
     if (player.spin > 0 && player.onGround) tiltTarget = 0.3;   // пробуксовывая, наклоняется вперёд, как перед рывком
+    if (player.onRope) tiltTarget = Math.sin(T * 2.6) * 0.2 + Math.sin(T * 5.3) * 0.05;   // балансирует
     player.tilt += (tiltTarget - player.tilt) * Math.min(1, dt * 8);
 
     if (mode === 'ready') {
@@ -1070,6 +1093,12 @@
     speed = Math.min(maxSpeed, baseSpeed + elapsed * 1.27);
     // на подъёме чуть медленнее, на спуске быстрее
     moveSpeed = speed * (player.onGround ? clamp(1 + player.slope * 1.5, 0.78, 1.25) : 1);
+    // на канате — осторожно и медленно
+    const rope = player.onGround ? ropeAt(player.x) : null;
+    if (rope && player.onRope !== rope) say('rope', 1, 1, 0);
+    player.onRope = rope || null;
+    player.ropeK = (player.ropeK ?? 1) + ((rope ? 0.32 : 1) - (player.ropeK ?? 1)) * Math.min(1, dt * 4);
+    moveSpeed *= player.ropeK;
     if (hitSeq) {
       hitSeq.t += dt;
       // на отлёте мир замедляется, пока сидит оглушённая — стоит
@@ -1108,7 +1137,7 @@
       const g = player.fastFall ? GRAVITY * 3 : GRAVITY;
       player.vy += g * dt;
       player.bottom += player.vy * dt;
-      const gy = groundY(player.x);
+      const gy = surfaceY(player.x);
       if (player.bottom >= gy) {
         player.bottom = gy;
         player.vy = 0;
@@ -1120,7 +1149,7 @@
         puff(player.x, gy, 7);
       }
     } else {
-      player.bottom = groundY(player.x);   // бежит по поверхности, повторяя рельеф
+      player.bottom = surfaceY(player.x);   // бежит по поверхности (или идёт по канату), повторяя рельеф
     }
     // в прыжке лучики разлетаются, на земле — собираются
     const spreadTarget = player.onGround ? 0 : 1;
@@ -1167,6 +1196,10 @@
         o.gy = groundY(o.x + o.w / 2); o.y = o.gy;
         const m = o.kind === 'bridge' ? o.w * 0.24 - 4 : 8;   // на обломках моста стоять можно
         const over = player.x > o.x + m && player.x < o.x + o.w - m;
+        if (o.kind === 'rope') {
+          if (!o.passed && o.x + o.w < player.x - 20) o.passed = true;
+          continue;
+        }
         if (over && !player.onGround && !player.flipT) startFlip(0.42);   // прыгнула заранее — крутит сальто над провалом
         if (over && player.onGround && !hitSeq && !(invuln > 0)) { startHit(o); break; }
         if (!o.passed && o.x + o.w < player.x - 20) o.passed = true;
@@ -1645,7 +1678,7 @@
     const x = player.x;
 
     // тень — пунктирный овал
-    const gy = groundY(x);
+    const gy = surfaceY(x);
     const hgt = gy - player.bottom;
     const sh = Math.max(0.3, 1 - hgt / 140);
     ink(1.2, 0.5 * sh);
@@ -2189,7 +2222,7 @@
     ctx.stroke();
 
     const top = Math.max(y0, y1);
-    if (o.kind === 'cliff') {
+    if (o.kind === 'cliff' || o.kind === 'rope') {
       // глубина: пунктиры уходят вниз, сыплются камешки
       ink(1, 0.35);
       ctx.setLineDash([3, 5]);
@@ -2222,6 +2255,38 @@
         ctx.fillStyle = C.line; ctx.beginPath(); ctx.arc(-2.6, -0.6, 0.6, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
       }
+    }
+
+    if (o.kind === 'rope') {
+      // столбики по краям, растяжки и сам канат
+      ink(1.6);
+      ctx.beginPath();
+      ctx.moveTo(-5, y0); ctx.lineTo(-5, y0 - 22);
+      ctx.moveTo(w + 5, y1); ctx.lineTo(w + 5, y1 - 22);
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(-5, y0 - 23, 1.8, 0, Math.PI * 2); paper(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(w + 5, y1 - 23, 1.8, 0, Math.PI * 2); paper(); ctx.stroke();
+      ink(1, 0.7);
+      ctx.beginPath();
+      ctx.moveTo(-5, y0 - 21); ctx.lineTo(0, y0 - 1);
+      ctx.moveTo(w + 5, y1 - 21); ctx.lineTo(w, y1 - 1);
+      ctx.stroke();
+      ink(1.8);
+      ctx.beginPath();
+      for (let lx = 0; lx <= w; lx += 3) {
+        const yy = ropeY(o, o.x + lx);
+        if (lx === 0) ctx.moveTo(lx, yy); else ctx.lineTo(lx, yy);
+      }
+      ctx.lineTo(w, ropeY(o, o.x + w));
+      ctx.stroke();
+      // «плетение» каната — мелкие насечки
+      ink(0.8, 0.6);
+      ctx.beginPath();
+      for (let lx = 4; lx < w; lx += 6) {
+        const yy = ropeY(o, o.x + lx);
+        ctx.moveTo(lx - 1.5, yy - 1.2); ctx.lineTo(lx + 1.5, yy + 1.2);
+      }
+      ctx.stroke();
     }
 
     if (o.kind === 'bridge') {
