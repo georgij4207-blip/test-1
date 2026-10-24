@@ -2907,10 +2907,24 @@
       dist: 210, off: 0, offTarget: 0, offRate: 0.8, gadget: null, nextGadget: rand(7, 11),
       forceX: null, squash: 0, pulling: false, sayT: 0, fx: [],
       yOff: 0, vy: 0, onGround: true, landSq: 0, sqV: 0, trip: 0, tickle: 0, tickleCd: 3, kickT: 0,
+      expr: '', exprT: 0, shownExpr: 'sly', pendingWow: 0,
       mode: 'chase', chaseT: rand(20, 30), face: 1, lt: 0, fly: 0, flyV: 0, baseX: 0, awayFrom: 0, etype: '', hintT: 0, crestWX: 0,
     });
     crumbs = [];
     player.erased = false;
+  }
+
+  // ---------- Мимика Ластика ----------
+  // Временное выражение (по событию) перекрывает постоянное (щекотка, отставание, обычная хитрая морда)
+  function setExpr(name, dur) {
+    eraser.expr = name;
+    eraser.exprT = dur;
+  }
+  function currentExpr() {
+    if (eraser.exprT > 0) return eraser.expr;
+    if (eraser.tickle > 0) return 'glee';
+    if (eraser.trip > 0 || (eraser.mode === 'chase' && eraser.off > 25)) return 'tired';
+    return 'sly';
   }
 
   function spawnCrumbs(n, power) {
@@ -2956,6 +2970,14 @@
       worldSpeed > 1 ? Math.min(worldSpeed / 16, 40) : approaching || mode === 'ready' ? 12 : 0);
     eraser.sayT = Math.max(0, eraser.sayT - dt);
     eraser.squash = Math.max(0, eraser.squash - dt * 0.9);
+    eraser.exprT = Math.max(0, eraser.exprT - dt);
+    if (eraser.pendingWow > 0) {
+      eraser.pendingWow -= dt;
+      if (eraser.pendingWow <= 0) { eraserSay('back'); boingSound(); setExpr('wow', 1.2); }
+    }
+    // смена выражения — резкая, с преувеличенным «подпрыгиванием» морды
+    const ex = currentExpr();
+    if (ex !== eraser.shownExpr) { eraser.shownExpr = ex; eraser.landSq = -0.3; eraser.sqV = 0; }
     for (let i = eraser.fx.length - 1; i >= 0; i--) {
       const f = eraser.fx[i];
       f.t -= dt;
@@ -3093,7 +3115,7 @@
         eraser.x = W + eraserHalf() - 6;
         eraser.face = -1;
         if (Math.random() < dt * 14) spawnCrumbsAt(W + 2, -rand(120, 220));
-        if (eraser.hintT <= 0) { eraser.mode = 'enterFront'; eraserSay('back'); boingSound(); }
+        if (eraser.hintT <= 0) { eraser.mode = 'enterFront'; eraserSay('back'); boingSound(); setExpr('wow', 1.2); }
       } else {
         // намёк: над вершиной холма показывается макушка
         eraser.x = eraser.crestWX - scroll;
@@ -3105,7 +3127,7 @@
           // выскакивает с вершины и спрыгивает вниз навстречу
           eraser.yOff = 0; eraser.vy = -560; eraser.onGround = false;
           eraser.mode = 'enterFront'; eraser.face = -1;
-          eraserSay('back'); boingSound();
+          eraserSay('back'); boingSound(); setExpr('wow', 1.2);
         }
       }
       return;
@@ -3125,12 +3147,19 @@
           boingSound();
           eraser.squash = 1;
           eraserSay('stomp');
+          setExpr('shock', 1.1);
         } else {
           startHit({ type: 'eraser', passed: false });
         }
       }
+      // Искорка перепрыгнула прямо над ним — ошарашен, челюсть отвисла
+      if (!eraser.jumpedOver && !player.onGround && pb.b < hb.t && pb.r > hb.l && pb.l < hb.r) {
+        eraser.jumpedOver = true;
+        setExpr('shock', 1.1);
+      }
       // пробежал мимо — разворачивается и гонится сзади
       if (eraser.x + eraserHalf() < player.x - 40) {
+        eraser.jumpedOver = false;
         eraser.mode = 'chase';
         eraser.face = 1;
         eraser.dist = player.x - eraser.x;
@@ -3152,7 +3181,8 @@
       eraser.dist = 230; eraser.off = 0; eraser.offTarget = 0;   // вбегает слева
       eraser.x = player.x - 230;
       eraser.chaseT = rand(20, 30);
-      eraserSay('back'); boingSound();
+      setExpr('scheme', 1.0);      // сначала хитро потирает ручки,
+      eraser.pendingWow = 1.0;     // потом «Вау, я тебя нашёл!»
       return;
     }
     // ищем вершину холма в правой части экрана
@@ -3166,6 +3196,7 @@
     if (best && lowest - best.y < 5) best = null;
     eraser.mode = 'hint';
     eraser.hintT = 1.0;
+    setExpr('scheme', 3);   // пока подкрадывается — щёлочки и ухмылка
     if (best && r < 0.67) {
       eraser.etype = 'hill'; eraser.crestWX = best.x + scroll;
       eraser.hintT = clamp(160 / Math.max(moveSpeed, 1), 0.35, 0.8);   // холм едет навстречу — намёк короче на скорости
@@ -3211,7 +3242,7 @@
         boomSfx();
         eraserFx('БУМ!', eraser.x + 18, groundY(eraser.x) + OFF - 115, 26);
         eraser.off = 150; eraser.offTarget = 150; eraser.offRate = 1;
-        eraserSay('fail');
+        eraserSay('fail'); setExpr('pout', 2.2);
       }
       if (g.boom && t >= 2.0) endGadget();
     } else if (g.type === 'magnet') {
@@ -3229,7 +3260,7 @@
           clangSfx();
           eraser.squash = 1;
           eraser.off = 40; eraser.offTarget = 40;
-          eraserSay('fail');
+          eraserSay('fail'); setExpr('pout', 2.2);
         }
         if (t >= 2.0) endGadget();
       }
@@ -3243,7 +3274,7 @@
         punchSfx();
         eraserFx('БАЦ!', eraser.x - 10, groundY(eraser.x) + OFF - 60, 24);
         eraser.off = 110; eraser.offTarget = 110; eraser.offRate = 1;
-        eraserSay('fail');
+        eraserSay('fail'); setExpr('pout', 2.2);
       }
       if (g.punched && t >= 1.1) endGadget();
     }
@@ -3381,26 +3412,153 @@
     // стёртый, «съеденный» задний угол
     ink(1, 0.7);
     ctx.beginPath(); ctx.moveTo(-w / 2 - 1, top + h * 0.7); ctx.quadraticCurveTo(-w / 2 + 3, top + h * 0.85, -w / 2 + 2, top + h + 1); ctx.stroke();
-    // хитрые глаза: прищур, брови домиком вниз к переносице
-    const ey = top + h * 0.36, er = Math.max(1.4, 3.6 * (1 - squash * 0.5));
-    for (const ex of [w * 0.12, w * 0.33]) {
-      ctx.fillStyle = C.line;
-      ctx.beginPath(); ctx.ellipse(ex, ey, 3.2, er, 0, 0, Math.PI * 2); ctx.fill();
+    drawEraserFace(w, top, h, squash, eraser.shownExpr);
+  }
+
+  // Лицо Ластика по выражению: sly (обычное хитрое), scheme, wow, glee, tired, shock, pout
+  function drawEraserFace(w, top, h, squash, ex) {
+    const k = 1 - squash * 0.5;
+    const ey = top + h * 0.36, my = top + h * 0.68;
+    const eyesX = [w * 0.12, w * 0.33];
+    const dot = (x, y, r, c) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); };
+    const lids = (er, frac) => {   // веко сверху закрывает часть глаза
+      for (const x of eyesX) {
+        ctx.fillStyle = C.body;
+        ctx.fillRect(x - 3.8, ey - er - 1, 7.6, er * 2 * frac + 1);
+        ink(1.1);
+        ctx.beginPath(); ctx.moveTo(x - 3.5, ey - er + er * 2 * frac); ctx.lineTo(x + 3.5, ey - er + er * 2 * frac); ctx.stroke();
+      }
+    };
+    const brows = (lIn, lOut, rIn, rOut, base) => {   // смещения концов бровей (вверх — отрицательные)
+      ink(1.4);
+      ctx.beginPath();
+      ctx.moveTo(w * 0.03, base + lOut); ctx.lineTo(w * 0.2, base + lIn);
+      ctx.moveTo(w * 0.25, base + rIn); ctx.lineTo(w * 0.43, base + rOut);
+      ctx.stroke();
+    };
+
+    if (ex === 'scheme') {
+      // глаза-щёлочки, хитрая кривая ухмылка, потирает ручки
+      ink(1.5);
+      ctx.beginPath();
+      for (const x of eyesX) { ctx.moveTo(x - 3.4, ey + 0.5); ctx.quadraticCurveTo(x, ey - 1.2, x + 3.4, ey + 0.5); }
+      ctx.stroke();
+      brows(1.5, -2.5, 1.5, -3.5, ey - 4.5);
+      ink(1.4);
+      ctx.beginPath(); ctx.moveTo(w * 0.02, my - 0.5); ctx.quadraticCurveTo(w * 0.26, my + 3.5 * k, w * 0.47, my - 4.5); ctx.stroke();
+      const rub = Math.sin(T * 26) * 2.2;
+      for (const s of [-1, 1]) {
+        const hx = w * 0.5 + 4, hy = top + h * 0.82 + s * rub;
+        ink(1.4);
+        ctx.beginPath(); ctx.moveTo(w * 0.5 - 1, top + h * 0.62); ctx.quadraticCurveTo(w * 0.5 + 6, top + h * 0.7, hx, hy); ctx.stroke();
+        ctx.beginPath(); ctx.arc(hx + 1, hy, 2.3, 0, Math.PI * 2); paper(C.body); ctx.stroke();
+      }
+      return;
+    }
+    if (ex === 'wow') {
+      // глаза распахнуты, брови взлетели, рот до ушей
+      for (const x of eyesX) {
+        ctx.fillStyle = C.line; ctx.beginPath(); ctx.ellipse(x, ey - 0.5, 4, 5 * k, 0, 0, Math.PI * 2); ctx.fill();
+        dot(x + 0.8, ey, 1.6, C.ink);
+      }
+      brows(-1, 1, -1, 0.5, ey - 8.5 * k);
       ctx.fillStyle = C.ink;
-      ctx.beginPath(); ctx.arc(ex + 1.3, ey + 0.6, 1.5, 0, Math.PI * 2); ctx.fill();
-      // веко прикрывает верх — прищур
+      ctx.beginPath(); ctx.moveTo(w * -0.04, my - 2.5); ctx.quadraticCurveTo(w * 0.22, my + 9 * k, w * 0.5, my - 3.5); ctx.closePath(); ctx.fill();
+      ink(1.4); ctx.stroke();
+      ctx.fillStyle = C.line; ctx.fillRect(w * 0.04, my - 2.2, w * 0.38, 1.6);   // ряд зубов
+      return;
+    }
+    if (ex === 'glee') {
+      // зажмурился от удовольствия, злорадно хохочет
+      ink(1.5);
+      ctx.beginPath();
+      for (const x of eyesX) { ctx.moveTo(x - 3.4, ey + 1); ctx.quadraticCurveTo(x, ey - 3, x + 3.4, ey + 1); }
+      ctx.stroke();
+      brows(-0.5, -2, -0.5, -2.5, ey - 5);
+      const open = 4 + Math.abs(Math.sin(T * 22)) * 3;   // хохочет — рот прыгает
+      ctx.fillStyle = C.ink;
+      ctx.beginPath(); ctx.moveTo(w * 0.0, my - 2); ctx.quadraticCurveTo(w * 0.23, my + open * 1.6 * k, w * 0.46, my - 2.5); ctx.closePath(); ctx.fill();
+      ink(1.4); ctx.stroke();
+      ctx.fillStyle = C.line; ctx.beginPath(); ctx.ellipse(w * 0.24, my + open * 0.55, 2.8, 1.5, 0, 0, Math.PI * 2); ctx.fill();   // язык
+      return;
+    }
+    if (ex === 'tired') {
+      // брови домиком, глаза сонные, язык наружу, капли пота
+      for (const x of eyesX) {
+        ctx.fillStyle = C.line; ctx.beginPath(); ctx.ellipse(x, ey, 3.2, 3.6 * k, 0, 0, Math.PI * 2); ctx.fill();
+        dot(x + 0.5, ey + 1.2, 1.4, C.ink);
+      }
+      lids(3.6 * k, 0.5);
+      brows(-3.5, 0.5, -3.5, 0.5, ey - 4.5);
+      ink(1.4);
+      ctx.beginPath(); ctx.ellipse(w * 0.24, my, 4.5, 2.4, 0, 0, Math.PI * 2); ctx.fillStyle = C.ink; ctx.fill(); ctx.stroke();
+      // высунутый язык болтается
+      const sw = Math.sin(T * 14) * 1.2;
+      ctx.beginPath(); ctx.moveTo(w * 0.24 - 2.6, my + 1); ctx.quadraticCurveTo(w * 0.24 + sw, my + 9, w * 0.24 + 2.6, my + 1);
+      paper(C.line); ink(1.2); ctx.stroke();
+      // капли пота слетают с макушки
+      for (let i = 0; i < 3; i++) {
+        const ph = (T * 1.6 + i / 3) % 1;
+        const dx = -w * 0.32 - ph * 8 - i * 3, dy = top - 2 - Math.sin(ph * Math.PI) * 8 + ph * 6;
+        ctx.save(); ctx.globalAlpha *= 1 - ph;
+        ctx.beginPath(); ctx.moveTo(dx, dy - 3.2); ctx.quadraticCurveTo(dx + 2.4, dy + 0.8, dx, dy + 1.6); ctx.quadraticCurveTo(dx - 2.4, dy + 0.8, dx, dy - 3.2);
+        paper(); ink(1.1); ctx.stroke();
+        ctx.restore();
+      }
+      return;
+    }
+    if (ex === 'shock') {
+      // ошарашен: огромные глаза с точками-зрачками, брови до потолка, челюсть отвисла
+      for (const x of eyesX) {
+        ctx.fillStyle = C.line; ctx.beginPath(); ctx.ellipse(x, ey - 1, 4.4, 5.4 * k, 0, 0, Math.PI * 2); ctx.fill();
+        ink(1.1); ctx.stroke();
+        dot(x, ey - 1, 0.9, C.ink);
+      }
+      brows(-2, -1, -2, -1, ey - 10 * k);
+      ctx.fillStyle = C.ink;
+      ctx.beginPath(); ctx.ellipse(w * 0.24, my + 4, 4, 8 * k, 0, 0, Math.PI * 2); ctx.fill();
+      ink(1.4); ctx.stroke();
+      return;
+    }
+    if (ex === 'pout') {
+      // обиделся: щёки надуты, губки бантиком, брови сердито к переносице, из макушки пар
+      for (const x of eyesX) {
+        ctx.fillStyle = C.line; ctx.beginPath(); ctx.ellipse(x, ey, 3, 3 * k, 0, 0, Math.PI * 2); ctx.fill();
+        dot(x + 0.6, ey + 0.8, 1.3, C.ink);
+      }
+      lids(3 * k, 0.35);
+      brows(2, -2.5, 2, -3, ey - 4);
+      const puff = 1 + Math.sin(T * 8) * 0.08;
+      ink(1.3);
+      for (const cx of [w * 0.02, w * 0.46]) { ctx.beginPath(); ctx.arc(cx, my, 4.6 * puff, 0, Math.PI * 2); paper(C.body); ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(w * 0.24, my + 0.5, 1.6, 0, Math.PI * 2); ctx.stroke();
+      // пар из макушки
+      for (let i = 0; i < 3; i++) {
+        const ph = (T * 1.4 + i / 3) % 1;
+        ctx.save(); ctx.globalAlpha *= 1 - ph;
+        ctx.beginPath(); ctx.arc(-w * 0.05 + Math.sin(ph * 6 + i) * 3, top - 4 - ph * 16, 2 + ph * 3.5, 0, Math.PI * 2);
+        paper(); ink(1.1); ctx.stroke();
+        ctx.restore();
+      }
+      return;
+    }
+
+    // sly: хитрые глаза — прищур, брови домиком вниз к переносице, кривая ухмылка с зубами
+    const er = Math.max(1.4, 3.6 * (1 - squash * 0.5));
+    for (const x of eyesX) {
+      ctx.fillStyle = C.line;
+      ctx.beginPath(); ctx.ellipse(x, ey, 3.2, er, 0, 0, Math.PI * 2); ctx.fill();
+      dot(x + 1.3, ey + 0.6, 1.5, C.ink);
       ctx.fillStyle = C.body;
-      ctx.fillRect(ex - 3.6, ey - er - 1, 7.2, er * 0.85 + 1);
+      ctx.fillRect(x - 3.6, ey - er - 1, 7.2, er * 0.85 + 1);
       ink(1.1);
-      ctx.beginPath(); ctx.moveTo(ex - 3.4, ey - er * 0.15); ctx.lineTo(ex + 3.4, ey - er * 0.15); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - 3.4, ey - er * 0.15); ctx.lineTo(x + 3.4, ey - er * 0.15); ctx.stroke();
     }
     ink(1.4);
     ctx.beginPath();
-    ctx.moveTo(w * 0.04, ey - er - 3); ctx.lineTo(w * 0.2, ey - er - 1);     // левая бровь — вниз к центру
-    ctx.moveTo(w * 0.25, ey - er - 1); ctx.lineTo(w * 0.42, ey - er - 3.5);  // правая
+    ctx.moveTo(w * 0.04, ey - er - 3); ctx.lineTo(w * 0.2, ey - er - 1);
+    ctx.moveTo(w * 0.25, ey - er - 1); ctx.lineTo(w * 0.42, ey - er - 3.5);
     ctx.stroke();
-    // ухмылка до ушей, кривая, с зубами
-    const my = top + h * 0.68;
     ink(1.4);
     ctx.beginPath();
     ctx.moveTo(w * 0.0, my - 1.5);
