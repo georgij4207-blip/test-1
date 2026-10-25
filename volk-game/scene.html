@@ -481,7 +481,7 @@ const TAIL_REST = [0.35, 0.65, 0.95], TAIL_FWD = [1.1, 1.4, 1.6];
 
 function drawWolf(c, X0, Y0, S, st) {
   const th = st.view * D2R, the = st.viewEar * D2R, tht = st.viewTail * D2R;
-  const L = LEGS[st.legs], bob = st.bob || 0, pitch = st.pitch || 0, lw = Math.max(0.8, S * 0.012);
+  const L = typeof st.legs === 'string' ? LEGS[st.legs] : st.legs, bob = st.bob || 0, pitch = st.pitch || 0, lw = Math.max(0.8, S * 0.012);
   const cp = Math.cos(pitch), sp = Math.sin(pitch);
   // Корпус наклоняется вокруг таза; всё выше таза ещё и подпрыгивает при беге.
   const body = p => {
@@ -732,9 +732,9 @@ let BRAKE_AT = 0, STOP_AT = 0;
 })();
 
 // Борозды от лап на асфальте.
-function drawSkids(F) {
-  if (F < BRAKE_AT) return;
-  const zEnd = TL[Math.min(F, STOP_AT)].z, view = TL[BRAKE_AT].view * D2R;
+function drawSkids(t) {
+  if (t < BRAKE_AT) return;
+  const zEnd = stateAt(Math.min(t, STOP_AT)).z, view = TL[BRAKE_AT].view * D2R;
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   for (const s of [-1, 1]) {
     const pts = [];
@@ -754,11 +754,11 @@ function c2poly(a, b, col) {
 }
 
 // Пыль из-под лап: клубы растут, поднимаются и тают; каждый кадр — новое положение.
-function drawDust(F) {
+function drawDust(t) {
   const spawns = [];
   for (let b = BRAKE_AT; b <= STOP_AT; b++) spawns.push(b);
   for (const b of spawns) {
-    const age = F - b, life = b === STOP_AT ? 12 : 9;
+    const age = t - b, life = b === STOP_AT ? 12 : 9;
     if (age < 0 || age >= life) continue;
     const z0 = TL[b].z, S = WOLF_H / z0, big = b === STOP_AT ? 1.25 : 1;
     const r = rng(hash(77, b));
@@ -775,28 +775,43 @@ function drawDust(F) {
   ctx.globalAlpha = 1;
 }
 
-function wolfItem(F, out) {
-  const st = Object.assign({}, TL[F], { viewEar: TL[Math.max(0, F - 1)].view, viewTail: TL[Math.max(0, F - 2)].view });
+// Промежуточные позы: между ключевыми кадрами раскадровки всё плавно интерполируется,
+// поэтому волк движется с частотой экрана, а позы, паузы и ракурсы остаются прежними.
+const NUM = ['z', 'view', 'pitch', 'roll', 'bob', 'earA', 'tf', 'tailWave'];
+const lerp = (a, b, f) => a + (b - a) * f;
+function stateAt(t) {
+  t = Math.max(0, Math.min(TL.length - 1, t));
+  const F = Math.floor(t), f = t - F, a = TL[F], b = TL[Math.min(F + 1, TL.length - 1)];
+  const st = Object.assign({}, a);
+  for (const k of NUM) st[k] = lerp(a[k] || 0, b[k] || 0, f);
+  const la = LEGS[a.legs], lb = LEGS[b.legs], mix = (A, B) => A.map((p, i) => [lerp(p[0], B[i][0], f), lerp(p[1], B[i][1], f)]);
+  st.legs = { foot: mix(la.foot, lb.foot), hand: mix(la.hand, lb.hand), knee: lerp(la.knee, lb.knee, f) };
+  return st;
+}
+function wolfItem(t, out) {
+  const st = Object.assign(stateAt(t), { viewEar: stateAt(t - 1).view, viewTail: stateAt(t - 2).view });
   out.push({ z: st.z, draw: () => {
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
     drawWolf(ctx, wolfX(st.z), yAt(st.z), WOLF_H / st.z, st);
-    drawDust(F);
+    drawDust(t);
   } });
 }
 
 // ---------- Управление анимацией ----------
 let animT = 0, slow = false, paused = false;
-const animFrame = () => Math.min(TL.length - 1, Math.floor(animT));
+const STEP = 0.5;   // «Кадр» — шаг в полкадра раскадровки, то есть 24 кадра в секунду
+const END = TL.length - 1, STEPS = END / STEP + 1;
 const bSlow = document.getElementById('bSlow'), bStep = document.getElementById('bStep');
 function syncUi() {
   bSlow.classList.toggle('on', slow);
   bStep.classList.toggle('on', paused);
-  bStep.textContent = paused ? `Кадр ${animFrame() + 1}/${TL.length}` : 'Кадр';
+  bStep.textContent = paused ? `Кадр ${Math.round(animT / STEP) + 1}/${STEPS}` : 'Кадр';
 }
 document.getElementById('bRestart').addEventListener('click', () => { animT = 0; paused = false; syncUi(); });
 bSlow.addEventListener('click', () => { slow = !slow; paused = false; syncUi(); });
 bStep.addEventListener('click', () => {
-  animT = paused ? Math.min(TL.length - 1, animFrame() + 1) : animFrame();
+  const k = Math.round(animT / STEP);
+  animT = Math.min(END, (paused ? k + 1 : k) * STEP);
   paused = true; syncUi();
 });
 
@@ -808,12 +823,11 @@ function render() {
   drawRange();
   drawSand();
   drawRoad();
-  const F = animFrame();
-  drawSkids(F);
+  drawSkids(animT);
   const items = [];
   ROWS.forEach((row, ri) => rowItems(row, ri, items));
   frameItem(items);
-  wolfItem(F, items);
+  wolfItem(animT, items);
   items.sort((a, b) => b.z - a.z);
   for (const it of items) { ctx.setTransform(1, 0, 0, 1, 0, 0); it.draw(); }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -860,7 +874,7 @@ let last = 0;
 function frame(t) {
   const dt = last ? Math.min(0.05, (t - last) / 1000) : 0;
   last = t;
-  if (!paused) { animT = Math.min(TL.length - 1, animT + dt * 12 * (slow ? 0.25 : 1)); }
+  if (!paused) { animT = Math.min(END, animT + dt * 12 * (slow ? 0.25 : 1)); }
   if (!drag) {
     if (keyDir) vel = keyDir * 700;
     cam += vel * dt;
