@@ -63,6 +63,7 @@ canvas { display: block; width: 100%; height: 100%; }
   background: var(--badge); color: #fff;
   font-size: 12px; padding: 3px 8px; border-radius: 999px;
 }
+.badge.redrawn { background: #3f7f5a; }
 .loading {
   position: absolute; inset: 0; display: grid; place-items: center;
   color: var(--muted);

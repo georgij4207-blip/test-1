@@ -11,7 +11,8 @@
   {
    "angle": 0,
    "source": "лист, 0°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 5,
@@ -22,7 +23,8 @@
   {
    "angle": 10,
    "source": "лист, 10°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 15,
@@ -33,7 +35,8 @@
   {
    "angle": 20,
    "source": "лист, 20°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 25,
@@ -44,7 +47,8 @@
   {
    "angle": 30,
    "source": "лист, 30°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 35,
@@ -55,7 +59,8 @@
   {
    "angle": 40,
    "source": "лист, 40°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 45,
@@ -66,7 +71,8 @@
   {
    "angle": 50,
    "source": "лист, 50°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 55,
@@ -77,7 +83,8 @@
   {
    "angle": 60,
    "source": "лист, 60°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 65,
@@ -88,7 +95,8 @@
   {
    "angle": 70,
    "source": "лист, 70°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 75,
@@ -99,7 +107,8 @@
   {
    "angle": 80,
    "source": "интерполяция (оптический поток 70°↔90°)",
-   "interpolated": true
+   "interpolated": true,
+   "redrawn": false
   },
   {
    "angle": 85,
@@ -110,7 +119,8 @@
   {
    "angle": 90,
    "source": "лист, 90°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 95,
@@ -121,7 +131,8 @@
   {
    "angle": 100,
    "source": "лист, 100°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 105,
@@ -132,7 +143,8 @@
   {
    "angle": 110,
    "source": "лист, 110°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 115,
@@ -143,7 +155,8 @@
   {
    "angle": 120,
    "source": "лист, 120°",
-   "interpolated": false
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 125,
@@ -153,118 +166,129 @@
   },
   {
    "angle": 130,
-   "source": "лист, 130°",
-   "interpolated": false
+   "source": "лист, 140° (перенесён на 130°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 135,
    "interpolated": true,
-   "confidence": "высокая",
+   "confidence": "средняя",
    "source": "оптический поток 130°↔140° (не проверено)"
   },
   {
    "angle": 140,
-   "source": "лист, 140°",
-   "interpolated": false
+   "source": "лист, 160° (перенесён на 140°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 145,
    "interpolated": true,
-   "confidence": "высокая",
+   "confidence": "средняя",
    "source": "оптический поток 140°↔150° (не проверено)"
   },
   {
    "angle": 150,
-   "source": "лист, 150°",
-   "interpolated": false
+   "source": "лист, 170° (перенесён на 150°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 155,
    "interpolated": true,
-   "confidence": "средняя",
+   "confidence": "низкая",
    "source": "оптический поток 150°↔160° (не проверено)"
   },
   {
    "angle": 160,
-   "source": "лист, 160°",
-   "interpolated": false
+   "source": "дорисован: ячейка «180°» листа, хвост смещён к центру",
+   "interpolated": false,
+   "redrawn": true
   },
   {
    "angle": 165,
    "interpolated": true,
-   "confidence": "высокая",
+   "confidence": "низкая",
    "source": "оптический поток 160°↔170° (не проверено)"
   },
   {
    "angle": 170,
-   "source": "лист, 170°",
-   "interpolated": false
+   "source": "дорисован: тело вида сзади + полуповёрнутая голова, хвост почти по центру",
+   "interpolated": false,
+   "redrawn": true
   },
   {
    "angle": 175,
    "interpolated": true,
-   "confidence": "низкая",
+   "confidence": "высокая",
    "source": "оптический поток 170°↔180° (не проверено)"
   },
   {
    "angle": 180,
-   "source": "лист, 180°",
-   "interpolated": false
+   "source": "дорисован: силуэт анфаса в окраске спины, симметричный затылок, хвост по центру",
+   "interpolated": false,
+   "redrawn": true
   },
   {
    "angle": 185,
    "interpolated": true,
-   "confidence": "низкая",
+   "confidence": "средняя",
    "source": "оптический поток 180°↔190° (не проверено)"
   },
   {
    "angle": 190,
-   "source": "зеркало 170°",
-   "interpolated": false
+   "source": "зеркало 170° (дорисован: тело вида сзади + полуповёрнутая голова, хвост почти по центру)",
+   "interpolated": false,
+   "redrawn": true
   },
   {
    "angle": 195,
    "interpolated": true,
-   "confidence": "высокая",
+   "confidence": "низкая",
    "source": "оптический поток 190°↔200° (не проверено)"
   },
   {
    "angle": 200,
-   "source": "зеркало 160°",
-   "interpolated": false
+   "source": "зеркало 160° (дорисован: ячейка «180°» листа, хвост смещён к центру)",
+   "interpolated": false,
+   "redrawn": true
   },
   {
    "angle": 205,
    "interpolated": true,
-   "confidence": "средняя",
+   "confidence": "низкая",
    "source": "оптический поток 200°↔210° (не проверено)"
   },
   {
    "angle": 210,
-   "source": "зеркало 150°",
-   "interpolated": false
+   "source": "зеркало 150° (лист, 170° (перенесён на 150°))",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 215,
    "interpolated": true,
-   "confidence": "высокая",
+   "confidence": "средняя",
    "source": "оптический поток 210°↔220° (не проверено)"
   },
   {
    "angle": 220,
-   "source": "зеркало 140°",
-   "interpolated": false
+   "source": "зеркало 140° (лист, 160° (перенесён на 140°))",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 225,
    "interpolated": true,
-   "confidence": "высокая",
+   "confidence": "средняя",
    "source": "оптический поток 220°↔230° (не проверено)"
   },
   {
    "angle": 230,
-   "source": "зеркало 130°",
-   "interpolated": false
+   "source": "зеркало 130° (лист, 140° (перенесён на 130°))",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 235,
@@ -274,8 +298,9 @@
   },
   {
    "angle": 240,
-   "source": "зеркало 120°",
-   "interpolated": false
+   "source": "зеркало 120° (лист, 120°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 245,
@@ -285,8 +310,9 @@
   },
   {
    "angle": 250,
-   "source": "зеркало 110°",
-   "interpolated": false
+   "source": "зеркало 110° (лист, 110°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 255,
@@ -296,8 +322,9 @@
   },
   {
    "angle": 260,
-   "source": "зеркало 100°",
-   "interpolated": false
+   "source": "зеркало 100° (лист, 100°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 265,
@@ -307,8 +334,9 @@
   },
   {
    "angle": 270,
-   "source": "зеркало 90°",
-   "interpolated": false
+   "source": "зеркало 90° (лист, 90°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 275,
@@ -318,8 +346,9 @@
   },
   {
    "angle": 280,
-   "source": "зеркало 80° (интерполяция)",
-   "interpolated": true
+   "source": "зеркало 80° (интерполяция (оптический поток 70°↔90°))",
+   "interpolated": true,
+   "redrawn": false
   },
   {
    "angle": 285,
@@ -329,8 +358,9 @@
   },
   {
    "angle": 290,
-   "source": "зеркало 70°",
-   "interpolated": false
+   "source": "зеркало 70° (лист, 70°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 295,
@@ -340,8 +370,9 @@
   },
   {
    "angle": 300,
-   "source": "зеркало 60°",
-   "interpolated": false
+   "source": "зеркало 60° (лист, 60°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 305,
@@ -351,8 +382,9 @@
   },
   {
    "angle": 310,
-   "source": "зеркало 50°",
-   "interpolated": false
+   "source": "зеркало 50° (лист, 50°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 315,
@@ -362,8 +394,9 @@
   },
   {
    "angle": 320,
-   "source": "зеркало 40°",
-   "interpolated": false
+   "source": "зеркало 40° (лист, 40°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 325,
@@ -373,8 +406,9 @@
   },
   {
    "angle": 330,
-   "source": "зеркало 30°",
-   "interpolated": false
+   "source": "зеркало 30° (лист, 30°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 335,
@@ -384,8 +418,9 @@
   },
   {
    "angle": 340,
-   "source": "зеркало 20°",
-   "interpolated": false
+   "source": "зеркало 20° (лист, 20°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 345,
@@ -395,8 +430,9 @@
   },
   {
    "angle": 350,
-   "source": "зеркало 10°",
-   "interpolated": false
+   "source": "зеркало 10° (лист, 10°)",
+   "interpolated": false,
+   "redrawn": false
   },
   {
    "angle": 355,

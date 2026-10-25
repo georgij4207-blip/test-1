@@ -22,7 +22,7 @@ for k, f in enumerate(man["frames"]):
     x, y = (k % 6) * fw, (k // 6) * (fh + 22)
     sheet.paste(bg.convert("RGB"), (x, y))
     t = f["to_next"]
-    d.text((x + 4, y + 4), f"{f['angle']}°" + ("  interp" if f["interpolated"] else ""), fill="white")
+    d.text((x + 4, y + 4), f"{f['angle']}°" + ("  interp" if f["interpolated"] else "  redrawn" if f.get("redrawn") else ""), fill="white")
     d.rectangle([x, y + fh, x + fw - 1, y + fh + 21], fill=COL[t["flag"]])
     d.text((x + 4, y + fh + 5), f"-> next: IoU {t['iou']:.2f} {t['flag']}", fill="black")
 frames[0].save("docs/turnaround_preview.gif", save_all=True, append_images=frames[1:],

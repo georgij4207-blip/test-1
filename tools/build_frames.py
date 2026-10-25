@@ -6,10 +6,11 @@ Pipeline
   2. Normalise scale and position: frame 0 is centred on its feet; every next
      frame of the 0..180° half is registered to the previous one (scale + shift,
      feet locked to one baseline) by maximising the overlap of the lower body.
-  3. Build the 360° loop: 0..180 come from the sheet, 190..350 are horizontal
-     mirrors of 170..10 (the sheet's own 240..340 cells face the wrong way).
-     The sheet has no 80° drawing; it is synthesised by optical-flow morphing
-     between 70° and 90° and flagged as interpolated.
+  3. Build the 360° loop: 0..110 come from the sheet, 120..180 are re-timed
+     sheet cells plus back views redrawn from parts (redraw.py), 190..350 are
+     horizontal mirrors of 170..10 (the sheet's own 240..340 cells face the
+     wrong way). The sheet has no 80° drawing; it is synthesised by
+     optical-flow morphing between 70° and 90° and flagged as interpolated.
   4. Measure every neighbouring pair and write a QA report.
 
 Run from the repo root:  python3 tools/build_frames.py
@@ -25,6 +26,7 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(__file__))
 from common import cells, load_sheet, segment  # noqa: E402
 from morph import flow_morph  # noqa: E402
+import redraw  # noqa: E402
 
 OUT = "web/assets"
 FW, FH = 200, 270          # output frame size
@@ -170,22 +172,29 @@ def main():
         print(f"{lab:3d}°  overlap {score:.3f}  scale {s:.3f}  axis x {ax:.1f}")
         prev = lab
 
-    # --- 80°: optical-flow in-between of 70° and 90°
-    placed[80] = flow_morph(placed[70], placed[90], 0.5)
+    # --- first half: angle -> (image, source note, kind)
+    half = {ang: (placed[ang], f"лист, {ang}°", "sheet") for ang in order if ang <= 110}
+    # 80°: optical-flow in-between of 70° and 90°
+    half[80] = (flow_morph(placed[70], placed[90], 0.5),
+                "интерполяция (оптический поток 70°↔90°)", "interpolated")
+    # 120..180°: re-timed sheet cells + redrawn back views (see redraw.py)
+    for ang, (img, note) in redraw.build(placed).items():
+        half[ang] = (img, note, "redrawn" if note.startswith("дорисован") else "sheet")
 
     # --- second half: mirror
     frames, info = [], []
     for k in range(36):
         ang = k * 10
         if ang <= 180:
-            img = placed[ang]
-            origin = "интерполяция (оптический поток 70°↔90°)" if ang == 80 else f"лист, {ang}°"
+            img, origin, kind = half[ang]
         else:
-            img = placed[360 - ang][:, ::-1].copy()
-            origin = f"зеркало {360 - ang}°" + (" (интерполяция)" if 360 - ang == 80 else "")
+            img, note, kind = half[360 - ang]
+            img = img[:, ::-1].copy()
+            origin = f"зеркало {360 - ang}° ({note})"
         frames.append(img)
         info.append({"angle": ang, "source": origin,
-                     "interpolated": ang in (80, 280)})
+                     "interpolated": kind == "interpolated",
+                     "redrawn": kind == "redrawn"})
         Image.fromarray(img, "RGBA").save(f"{OUT}/frames/coyote_{ang:03d}.png", optimize=True)
 
     # --- sprite sheet 6x6

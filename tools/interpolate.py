@@ -32,7 +32,8 @@ def main():
         a, b = frames[i], frames[(i + 1) % n]
         src = base["frames"][i]
         out.append(a)
-        info.append({"angle": i * 10, "source": src["source"], "interpolated": src["interpolated"]})
+        info.append({"angle": i * 10, "source": src["source"],
+                     "interpolated": src["interpolated"], "redrawn": src.get("redrawn", False)})
         mid = flow_morph(a, b, 0.5)
         iou = src["to_next"]["iou"]
         conf = "высокая" if iou >= 0.8 else "средняя" if iou >= 0.7 else "низкая"

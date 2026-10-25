@@ -104,7 +104,9 @@
     ui.angle.textContent = Math.round(state.angle) % 360 + "°";
     ui.source.textContent = "кадр " + info.angle + "° · " + info.source +
       (info.confidence ? " · уверенность: " + info.confidence : "");
-    ui.badge.hidden = !info.interpolated;
+    ui.badge.hidden = !(info.interpolated || info.redrawn);
+    ui.badge.textContent = info.interpolated ? "интерполированный кадр" : "дорисованный кадр";
+    ui.badge.classList.toggle("redrawn", !info.interpolated && !!info.redrawn);
     if (document.activeElement !== ui.dial) ui.dial.value = state.angle.toFixed(1);
   }
 

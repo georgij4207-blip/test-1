@@ -12,6 +12,7 @@
    "angle": 0,
    "source": "лист, 0°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.744,
     "color_diff": 35.3,
@@ -22,6 +23,7 @@
    "angle": 10,
    "source": "лист, 10°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.765,
     "color_diff": 33.3,
@@ -32,6 +34,7 @@
    "angle": 20,
    "source": "лист, 20°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.755,
     "color_diff": 30.8,
@@ -42,6 +45,7 @@
    "angle": 30,
    "source": "лист, 30°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.738,
     "color_diff": 37.2,
@@ -52,6 +56,7 @@
    "angle": 40,
    "source": "лист, 40°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.824,
     "color_diff": 29.9,
@@ -62,6 +67,7 @@
    "angle": 50,
    "source": "лист, 50°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.837,
     "color_diff": 25.1,
@@ -72,6 +78,7 @@
    "angle": 60,
    "source": "лист, 60°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.816,
     "color_diff": 27.5,
@@ -82,6 +89,7 @@
    "angle": 70,
    "source": "лист, 70°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.872,
     "color_diff": 21.7,
@@ -92,6 +100,7 @@
    "angle": 80,
    "source": "интерполяция (оптический поток 70°↔90°)",
    "interpolated": true,
+   "redrawn": false,
    "to_next": {
     "iou": 0.872,
     "color_diff": 21.3,
@@ -102,6 +111,7 @@
    "angle": 90,
    "source": "лист, 90°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.714,
     "color_diff": 30.3,
@@ -112,6 +122,7 @@
    "angle": 100,
    "source": "лист, 100°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.776,
     "color_diff": 24.9,
@@ -122,6 +133,7 @@
    "angle": 110,
    "source": "лист, 110°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.872,
     "color_diff": 22.1,
@@ -132,126 +144,139 @@
    "angle": 120,
    "source": "лист, 120°",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
-    "iou": 0.851,
-    "color_diff": 19.4,
+    "iou": 0.804,
+    "color_diff": 23.6,
     "flag": "ok"
    }
   },
   {
    "angle": 130,
-   "source": "лист, 130°",
+   "source": "лист, 140° (перенесён на 130°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
-    "iou": 0.862,
-    "color_diff": 19.1,
+    "iou": 0.75,
+    "color_diff": 22.7,
     "flag": "ok"
    }
   },
   {
    "angle": 140,
-   "source": "лист, 140°",
+   "source": "лист, 160° (перенесён на 140°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
-    "iou": 0.832,
-    "color_diff": 21.4,
+    "iou": 0.795,
+    "color_diff": 20.0,
     "flag": "ok"
    }
   },
   {
    "angle": 150,
-   "source": "лист, 150°",
+   "source": "лист, 170° (перенесён на 150°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
-    "iou": 0.784,
-    "color_diff": 20.5,
-    "flag": "ok"
+    "iou": 0.621,
+    "color_diff": 21.4,
+    "flag": "jump"
    }
   },
   {
    "angle": 160,
-   "source": "лист, 160°",
+   "source": "дорисован: ячейка «180°» листа, хвост смещён к центру",
    "interpolated": false,
+   "redrawn": true,
    "to_next": {
-    "iou": 0.813,
-    "color_diff": 16.5,
+    "iou": 0.689,
+    "color_diff": 19.9,
     "flag": "ok"
    }
   },
   {
    "angle": 170,
-   "source": "лист, 170°",
+   "source": "дорисован: тело вида сзади + полуповёрнутая голова, хвост почти по центру",
    "interpolated": false,
+   "redrawn": true,
    "to_next": {
-    "iou": 0.541,
-    "color_diff": 24.4,
-    "flag": "jump"
+    "iou": 0.844,
+    "color_diff": 15.4,
+    "flag": "ok"
    }
   },
   {
    "angle": 180,
-   "source": "лист, 180°",
+   "source": "дорисован: силуэт анфаса в окраске спины, симметричный затылок, хвост по центру",
    "interpolated": false,
+   "redrawn": true,
    "to_next": {
-    "iou": 0.362,
-    "color_diff": 22.2,
-    "flag": "jump"
+    "iou": 0.778,
+    "color_diff": 17.9,
+    "flag": "ok"
    }
   },
   {
    "angle": 190,
-   "source": "зеркало 170°",
+   "source": "зеркало 170° (дорисован: тело вида сзади + полуповёрнутая голова, хвост почти по центру)",
    "interpolated": false,
+   "redrawn": true,
    "to_next": {
-    "iou": 0.813,
-    "color_diff": 16.5,
+    "iou": 0.689,
+    "color_diff": 19.9,
     "flag": "ok"
    }
   },
   {
    "angle": 200,
-   "source": "зеркало 160°",
+   "source": "зеркало 160° (дорисован: ячейка «180°» листа, хвост смещён к центру)",
    "interpolated": false,
+   "redrawn": true,
    "to_next": {
-    "iou": 0.784,
-    "color_diff": 20.5,
-    "flag": "ok"
+    "iou": 0.621,
+    "color_diff": 21.4,
+    "flag": "jump"
    }
   },
   {
    "angle": 210,
-   "source": "зеркало 150°",
+   "source": "зеркало 150° (лист, 170° (перенесён на 150°))",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
-    "iou": 0.832,
-    "color_diff": 21.4,
+    "iou": 0.795,
+    "color_diff": 20.0,
     "flag": "ok"
    }
   },
   {
    "angle": 220,
-   "source": "зеркало 140°",
+   "source": "зеркало 140° (лист, 160° (перенесён на 140°))",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
-    "iou": 0.862,
-    "color_diff": 19.1,
+    "iou": 0.75,
+    "color_diff": 22.7,
     "flag": "ok"
    }
   },
   {
    "angle": 230,
-   "source": "зеркало 130°",
+   "source": "зеркало 130° (лист, 140° (перенесён на 130°))",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
-    "iou": 0.851,
-    "color_diff": 19.4,
+    "iou": 0.804,
+    "color_diff": 23.6,
     "flag": "ok"
    }
   },
   {
    "angle": 240,
-   "source": "зеркало 120°",
+   "source": "зеркало 120° (лист, 120°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.872,
     "color_diff": 22.1,
@@ -260,8 +285,9 @@
   },
   {
    "angle": 250,
-   "source": "зеркало 110°",
+   "source": "зеркало 110° (лист, 110°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.776,
     "color_diff": 24.9,
@@ -270,8 +296,9 @@
   },
   {
    "angle": 260,
-   "source": "зеркало 100°",
+   "source": "зеркало 100° (лист, 100°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.714,
     "color_diff": 30.3,
@@ -280,8 +307,9 @@
   },
   {
    "angle": 270,
-   "source": "зеркало 90°",
+   "source": "зеркало 90° (лист, 90°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.872,
     "color_diff": 21.3,
@@ -290,8 +318,9 @@
   },
   {
    "angle": 280,
-   "source": "зеркало 80° (интерполяция)",
+   "source": "зеркало 80° (интерполяция (оптический поток 70°↔90°))",
    "interpolated": true,
+   "redrawn": false,
    "to_next": {
     "iou": 0.872,
     "color_diff": 21.7,
@@ -300,8 +329,9 @@
   },
   {
    "angle": 290,
-   "source": "зеркало 70°",
+   "source": "зеркало 70° (лист, 70°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.816,
     "color_diff": 27.5,
@@ -310,8 +340,9 @@
   },
   {
    "angle": 300,
-   "source": "зеркало 60°",
+   "source": "зеркало 60° (лист, 60°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.837,
     "color_diff": 25.1,
@@ -320,8 +351,9 @@
   },
   {
    "angle": 310,
-   "source": "зеркало 50°",
+   "source": "зеркало 50° (лист, 50°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.824,
     "color_diff": 29.9,
@@ -330,8 +362,9 @@
   },
   {
    "angle": 320,
-   "source": "зеркало 40°",
+   "source": "зеркало 40° (лист, 40°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.738,
     "color_diff": 37.2,
@@ -340,8 +373,9 @@
   },
   {
    "angle": 330,
-   "source": "зеркало 30°",
+   "source": "зеркало 30° (лист, 30°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.755,
     "color_diff": 30.8,
@@ -350,8 +384,9 @@
   },
   {
    "angle": 340,
-   "source": "зеркало 20°",
+   "source": "зеркало 20° (лист, 20°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.765,
     "color_diff": 33.3,
@@ -360,8 +395,9 @@
   },
   {
    "angle": 350,
-   "source": "зеркало 10°",
+   "source": "зеркало 10° (лист, 10°)",
    "interpolated": false,
+   "redrawn": false,
    "to_next": {
     "iou": 0.616,
     "color_diff": 38.4,
