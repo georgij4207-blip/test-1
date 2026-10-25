@@ -10,10 +10,11 @@
 <main class="app">
   <header class="top">
     <h1>Койот 360°</h1>
-    <p class="hint">Тяните мышью или пальцем. Клавиши ← → — шаг, пробел — авто.</p>
+    <p class="hint">Тяните мышью или пальцем. Клавиши ← → — к соседнему кадру, пробел — авто.</p>
   </header>
 
   <div class="stage" id="stage" tabindex="0" aria-label="Персонаж, вращение перетаскиванием">
+    <canvas id="floor" aria-hidden="true"></canvas>
     <canvas id="view"></canvas>
     <div class="badge" id="badge" hidden>интерполированный кадр</div>
     <div class="loading" id="loading">Загрузка…</div>
@@ -34,14 +35,8 @@
       <input id="speed" type="range" min="5" max="180" step="5" value="45">
       <output id="speedOut">45°/с</output>
     </label>
-    <label class="field">Кадры
-      <select id="set">
-        <option value="10">36 · шаг 10° (исходные)</option>
-        <option value="5">72 · шаг 5° (+интерполяция)</option>
-      </select>
-    </label>
-    <label class="check"><input id="blend" type="checkbox"> Сглаживание между кадрами</label>
-    <label class="check"><input id="snap" type="checkbox" checked> Доводка к ракурсу</label>
+    <label class="check"><input id="morph" type="checkbox" checked> <span id="morphLabel">Плавный морфинг</span></label>
+    <label class="check"><input id="snap" type="checkbox"> Доводка к нарисованному кадру</label>
   </section>
 </main>
 <script src="assets/manifest.js"></script>

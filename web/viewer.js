@@ -1,16 +1,20 @@
-// 360° turnaround viewer: one sprite sheet per frame set, drawn on a canvas.
-// Angle is a continuous float; the frame shown is the nearest one (or a blend
-// of the two neighbours when "smoothing" is on).
+// 360° turnaround viewer.
+// The angle is continuous. Between two drawn frames the image is morphed on
+// the GPU: both neighbours are warped along precomputed optical-flow fields
+// (tools/flows.py) toward the in-between angle and blended, so the turn reads
+// as one continuous motion instead of a flip-book. Without WebGL the viewer
+// falls back to a cross-fade on a 2D canvas.
 (function () {
   "use strict";
 
-  const manifests = window.COYOTE_MANIFESTS || {};
+  const M = window.COYOTE_MANIFEST;
   const $ = (id) => document.getElementById(id);
-  const stage = $("stage"), canvas = $("view"), ctx = canvas.getContext("2d");
+  const stage = $("stage"), floor = $("floor");
+  let canvas = $("view");
   const ui = {
     angle: $("angle"), source: $("source"), badge: $("badge"), dial: $("dial"),
     play: $("play"), dir: $("dir"), speed: $("speed"), speedOut: $("speedOut"),
-    set: $("set"), blend: $("blend"), snap: $("snap"), loading: $("loading"),
+    morph: $("morph"), morphLabel: $("morphLabel"), snap: $("snap"), loading: $("loading"),
   };
 
   const state = {
@@ -21,90 +25,200 @@
     speed: 45,           // deg/s for auto-rotation
     dragging: false,
     snapTarget: null,    // angle we ease to after a drag
-    set: null,           // active manifest
-    image: null,         // its sprite sheet
     dirty: true,
   };
-  const images = {};     // set key -> HTMLImageElement (cached)
 
   const wrap = (a) => ((a % 360) + 360) % 360;
   // shortest signed difference b - a in degrees
   const delta = (a, b) => ((b - a + 540) % 360) - 180;
+  const smoothstep = (e0, e1, x) => {
+    const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+    return t * t * (3 - 2 * t);
+  };
 
-  function loadSet(key) {
-    const m = manifests[key];
-    if (!m) return;
-    ui.loading.hidden = false;
-    const done = (img) => {
-      state.set = m;
-      state.image = img;
-      ui.loading.hidden = true;
-      state.dirty = true;
-    };
-    if (images[key] && images[key].complete) return done(images[key]);
-    const img = new Image();
-    img.decoding = "async";
-    img.onload = () => done(img);
-    img.onerror = () => { ui.loading.textContent = "Не удалось загрузить " + m.sprite; };
-    img.src = m.sprite;
-    images[key] = img;
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Не удалось загрузить " + src));
+      img.src = src;
+    });
   }
 
-  // ---------- drawing ----------
-  function resize() {
+  // ---------- layout ----------
+  let view = { W: 1, H: 1, scale: 1, ox: 0, oy: 0 };
+
+  function layout() {
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
     const r = stage.getBoundingClientRect();
-    canvas.width = Math.round(r.width * dpr);
-    canvas.height = Math.round(r.height * dpr);
+    const W = Math.max(1, Math.round(r.width * dpr)), H = Math.max(1, Math.round(r.height * dpr));
+    for (const c of [canvas, floor]) { c.width = W; c.height = H; }
+    const scale = Math.min(W / M.frameWidth, (H * 0.94) / M.frameHeight);
+    view = {
+      W, H, scale,
+      ox: W / 2 - M.axisX * scale,               // rotation axis in the middle
+      oy: H * 0.97 - M.baselineY * scale,        // soles near the bottom
+    };
+    // constant floor shadow, so it never jitters
+    const g = floor.getContext("2d");
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = "rgba(0,0,0,0.28)";
+    g.beginPath();
+    g.ellipse(W / 2, view.oy + M.baselineY * scale, 52 * scale, 6 * scale, 0, 0, Math.PI * 2);
+    g.fill();
     state.dirty = true;
   }
 
-  function drawFrame(m, img, index, alpha, scale, ox, oy) {
-    const sx = (index % m.columns) * m.frameWidth;
-    const sy = Math.floor(index / m.columns) * m.frameHeight;
-    ctx.globalAlpha = alpha;
-    ctx.drawImage(img, sx, sy, m.frameWidth, m.frameHeight,
-                  ox, oy, m.frameWidth * scale, m.frameHeight * scale);
-    ctx.globalAlpha = 1;
+  // ---------- WebGL morph renderer ----------
+  const VERT = `
+    attribute vec2 aPos;            // frame pixel coords of the quad corner
+    uniform vec2 uOrigin, uCanvas;
+    uniform float uDraw;
+    varying vec2 vPos;
+    void main() {
+      vPos = aPos;
+      vec2 px = uOrigin + aPos * uDraw;
+      vec2 clip = px / uCanvas * 2.0 - 1.0;
+      gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+    }`;
+  const FRAG = `
+    precision highp float;
+    uniform sampler2D uFrames, uFlow;
+    uniform vec2 uFrameSize, uSpriteSize, uFlowSize;
+    uniform vec2 uCellA, uCellB, uFlowFwd, uFlowBwd;
+    uniform float uT, uW, uFlowScale, uFlowOffset;
+    varying vec2 vPos;
+    vec2 flowAt(vec2 cell, vec2 p) {
+      return (texture2D(uFlow, (cell + p) / uFlowSize).rg * 255.0 - uFlowOffset) / uFlowScale;
+    }
+    vec4 frameAt(vec2 cell, vec2 p) {
+      if (p.x < 0.5 || p.y < 0.5 || p.x > uFrameSize.x - 0.5 || p.y > uFrameSize.y - 0.5) return vec4(0.0);
+      return texture2D(uFrames, (cell + p) / uSpriteSize);
+    }
+    void main() {
+      vec2 p = vPos;
+      // a pixel of the in-between came from A at p + t*f(B->A) and from B at p + (1-t)*f(A->B)
+      vec4 a = frameAt(uCellA, p + uT * flowAt(uFlowBwd, p));
+      vec4 b = frameAt(uCellB, p + (1.0 - uT) * flowAt(uFlowFwd, p));
+      gl_FragColor = mix(a, b, uW);     // premultiplied alpha
+    }`;
+
+  function createGL(frames, flow) {
+    const gl = canvas.getContext("webgl", { premultipliedAlpha: true, alpha: true, antialias: false });
+    if (!gl) return null;
+    const max = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    if (Math.max(frames.width, frames.height, flow.width, flow.height) > max) return null;
+
+    const sh = (type, src) => {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, src);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+      return s;
+    };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    gl.useProgram(prog);
+    const U = {};
+    for (const n of ["uOrigin", "uCanvas", "uDraw", "uFrames", "uFlow", "uFrameSize", "uSpriteSize",
+                     "uFlowSize", "uCellA", "uCellB", "uFlowFwd", "uFlowBwd", "uT", "uW",
+                     "uFlowScale", "uFlowOffset"]) U[n] = gl.getUniformLocation(prog, n);
+
+    const fw = M.frameWidth, fh = M.frameHeight;
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, fw, 0, 0, fh, fw, fh]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, "aPos");
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+    const texture = (unit, img, premultiply) => {
+      gl.activeTexture(gl.TEXTURE0 + unit);
+      gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, premultiply);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);   // flow values must stay exact
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    };
+    texture(0, frames, true);
+    texture(1, flow, false);
+    gl.uniform1i(U.uFrames, 0);
+    gl.uniform1i(U.uFlow, 1);
+    gl.uniform2f(U.uFrameSize, fw, fh);
+    gl.uniform2f(U.uSpriteSize, frames.width, frames.height);
+    gl.uniform2f(U.uFlowSize, flow.width, flow.height);
+    gl.uniform1f(U.uFlowScale, M.flow.scale);
+    gl.uniform1f(U.uFlowOffset, M.flow.offset);
+
+    const cell = (k) => [(k % M.columns) * fw, Math.floor(k / M.columns) * fh];
+    return function draw(i, j, t, w) {
+      gl.viewport(0, 0, view.W, view.H);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.uniform2f(U.uOrigin, view.ox, view.oy);
+      gl.uniform2f(U.uCanvas, view.W, view.H);
+      gl.uniform1f(U.uDraw, view.scale);
+      const [ax, ay] = cell(i), [bx, by] = cell(j);
+      gl.uniform2f(U.uCellA, ax, ay);
+      gl.uniform2f(U.uCellB, bx, by);
+      gl.uniform2f(U.uFlowFwd, ax, ay);
+      gl.uniform2f(U.uFlowBwd, ax, ay + M.flow.backwardOffsetY);
+      gl.uniform1f(U.uT, t);
+      gl.uniform1f(U.uW, w);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    };
   }
 
-  function render() {
-    const m = state.set, img = state.image;
-    if (!m || !img) return;
-    const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
-
-    const scale = Math.min(W / m.frameWidth, (H * 0.94) / m.frameHeight);
-    // put the rotation axis at the horizontal centre, the soles near the bottom
-    const ox = W / 2 - m.axisX * scale;
-    const oy = H * 0.97 - m.baselineY * scale;
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-
-    // floor shadow (constant, so it never jitters between frames)
-    ctx.fillStyle = "rgba(0,0,0,0.28)";
-    ctx.beginPath();
-    ctx.ellipse(W / 2, oy + m.baselineY * scale, 52 * scale, 6 * scale, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    const pos = state.angle / m.stepDegrees;
-    let shown;
-    if (ui.blend.checked && state.snapTarget === null) {
-      const i0 = Math.floor(pos) % m.count, i1 = (i0 + 1) % m.count;
-      const f = pos - Math.floor(pos);
-      drawFrame(m, img, i0, 1, scale, ox, oy);
-      if (f > 0.02) drawFrame(m, img, i1, f, scale, ox, oy);
-      shown = f < 0.5 ? i0 : i1;
-    } else {
-      shown = Math.round(pos) % m.count;
-      drawFrame(m, img, shown, 1, scale, ox, oy);
+  // ---------- 2D fallback: cross-fade ----------
+  function create2D(frames) {
+    let ctx = canvas.getContext("2d");
+    if (!ctx) {                        // canvas already claimed by a failed WebGL setup
+      const fresh = canvas.cloneNode(false);
+      canvas.replaceWith(fresh);
+      canvas = fresh;
+      ctx = canvas.getContext("2d");
+      layout();
     }
+    const fw = M.frameWidth, fh = M.frameHeight;
+    const blit = (k, alpha) => {
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(frames, (k % M.columns) * fw, Math.floor(k / M.columns) * fh, fw, fh,
+                    view.ox, view.oy, fw * view.scale, fh * view.scale);
+      ctx.globalAlpha = 1;
+    };
+    return function draw(i, j, t, w) {
+      ctx.clearRect(0, 0, view.W, view.H);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      blit(i, 1);
+      if (w > 0.01) blit(j, w);
+    };
+  }
 
-    const info = m.frames[shown];
+  let draw = null, gpu = false;
+
+  function render() {
+    const step = M.stepDegrees, n = M.count;
+    const pos = state.angle / step;
+    let i = Math.floor(pos) % n, t = pos - Math.floor(pos);
+    if (!ui.morph.checked) { i = Math.round(pos) % n; t = 0; }
+    const j = (i + 1) % n;
+    const w = gpu ? smoothstep(M.flow.blend[0], M.flow.blend[1], t) : t;
+    draw(i, j, t, w);
+
+    const near = t < 0.5 ? i : j;
+    const info = M.frames[near];
     ui.angle.textContent = Math.round(state.angle) % 360 + "°";
-    ui.source.textContent = "кадр " + info.angle + "° · " + info.source +
-      (info.confidence ? " · уверенность: " + info.confidence : "");
-    ui.badge.hidden = !(info.interpolated || info.redrawn);
+    const between = t > 0.02 && t < 0.98;
+    ui.source.textContent = between
+      ? `переход ${M.frames[i].angle}° → ${M.frames[j].angle}°${gpu ? " · морфинг" : " · наплыв"}`
+      : `кадр ${info.angle}° · ${info.source}`;
+    ui.badge.hidden = between || !(info.interpolated || info.redrawn);
     ui.badge.textContent = info.interpolated ? "интерполированный кадр" : "дорисованный кадр";
     ui.badge.classList.toggle("redrawn", !info.interpolated && !!info.redrawn);
     if (document.activeElement !== ui.dial) ui.dial.value = state.angle.toFixed(1);
@@ -122,7 +236,7 @@
       } else if (Math.abs(state.velocity) > 1) {
         // inertia after a flick
         state.angle = wrap(state.angle + state.velocity * dt);
-        state.velocity *= Math.exp(-4 * dt);
+        state.velocity *= Math.exp(-3 * dt);
         state.dirty = true;
         if (Math.abs(state.velocity) <= 1) beginSnap();
       } else if (state.snapTarget !== null) {
@@ -131,19 +245,19 @@
           state.angle = wrap(state.snapTarget);
           state.snapTarget = null;
         } else {
-          state.angle = wrap(state.angle + d * Math.min(1, dt * 12));
+          state.angle = wrap(state.angle + d * Math.min(1, dt * 8));
         }
         state.dirty = true;
       }
     }
-    if (state.dirty) { render(); state.dirty = false; }
+    if (state.dirty && draw) { render(); state.dirty = false; }
     requestAnimationFrame(tick);
   }
 
   function beginSnap() {
     state.velocity = 0;
-    if (!ui.snap.checked || !state.set) { state.snapTarget = null; return; }
-    const step = state.set.stepDegrees;
+    if (!ui.snap.checked) { state.snapTarget = null; return; }
+    const step = M.stepDegrees;
     state.snapTarget = wrap(Math.round(state.angle / step) * step);
   }
 
@@ -161,10 +275,9 @@
   stage.addEventListener("pointerdown", (e) => {
     if (e.button !== undefined && e.button > 0) return;
     stage.setPointerCapture(e.pointerId);
+    if (state.playing) setPlaying(false);
     state.dragging = true;
     state.velocity = 0;
-    state.snapTarget = null;
-    if (state.playing) setPlaying(false);
     state.snapTarget = null;
     lastX = e.clientX; lastT = e.timeStamp; samples = [];
     stage.classList.add("dragging");
@@ -172,8 +285,7 @@
   });
   stage.addEventListener("pointermove", (e) => {
     if (!state.dragging) return;
-    const dx = e.clientX - lastX;
-    const d = dx * degPerPx();
+    const d = (e.clientX - lastX) * degPerPx();
     state.angle = wrap(state.angle + d);
     const dt = (e.timeStamp - lastT) / 1000;
     if (dt > 0) samples.push({ v: d / dt, t: e.timeStamp });
@@ -193,9 +305,9 @@
   stage.addEventListener("pointerup", endDrag);
   stage.addEventListener("pointercancel", endDrag);
 
-  // keyboard
+  // keyboard: arrows glide to the neighbouring drawn frame
   stage.addEventListener("keydown", (e) => {
-    const step = state.set ? state.set.stepDegrees : 10;
+    const step = M.stepDegrees;
     if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
       setPlaying(false);
       const s = e.key === "ArrowRight" ? 1 : -1;
@@ -226,21 +338,43 @@
     state.dirty = true;
   });
   ui.dial.addEventListener("change", beginSnap);
-  ui.set.addEventListener("change", () => loadSet(ui.set.value));
-  ui.blend.addEventListener("change", () => (state.dirty = true));
+  ui.morph.addEventListener("change", () => (state.dirty = true));
   ui.snap.addEventListener("change", () => { if (!state.playing) beginSnap(); });
 
-  // preload the other frame set in the background so switching is instant
-  window.addEventListener("resize", resize);
-  if (window.ResizeObserver) new ResizeObserver(resize).observe(stage);
-  resize();
-  if (!manifests["10"]) {
-    ui.loading.textContent = "Нет assets/manifest.js — запустите tools/build_frames.py";
+  // ---------- start ----------
+  if (!M) {
+    ui.loading.textContent = "Нет assets/manifest.js — запустите tools/build_frames.py и tools/flows.py";
     return;
   }
-  if (!manifests["5"]) ui.set.querySelector('option[value="5"]').disabled = true;
-  loadSet("10");
-  if (manifests["5"]) { const pre = new Image(); pre.src = manifests["5"].sprite; images["5"] = pre; }
+  window.addEventListener("resize", layout);
+  if (window.ResizeObserver) new ResizeObserver(layout).observe(stage);
+  layout();
+
+  // From file:// the browser won't let WebGL read image files; use the inlined copies.
+  const inlined = () => new Promise((resolve) => {
+    if (location.protocol !== "file:" || window.COYOTE_SPRITES) return resolve();
+    const s = document.createElement("script");
+    s.src = "assets/sprites.js";
+    s.onload = s.onerror = () => resolve();
+    document.head.appendChild(s);
+  });
+  const src = (path) => (window.COYOTE_SPRITES && window.COYOTE_SPRITES[path]) || path;
+
+  inlined()
+    .then(() => Promise.all([loadImage(src(M.sprite)),
+                             M.flow ? loadImage(src(M.flow.sprite)) : Promise.resolve(null)]))
+    .then(([frames, flow]) => {
+      try { draw = flow && createGL(frames, flow); } catch (err) { console.warn(err); draw = null; }
+      gpu = !!draw;
+      if (!draw) {
+        draw = create2D(frames);
+        ui.morphLabel.textContent = "Плавный наплыв (без WebGL)";
+      }
+      ui.loading.hidden = true;
+      state.dirty = true;
+      setPlaying(true);
+    })
+    .catch((err) => { ui.loading.textContent = err.message; });
   requestAnimationFrame(tick);
 
   // debug / automation hook
@@ -249,5 +383,6 @@
     play: () => setPlaying(true),
     stop: () => setPlaying(false),
     get angle() { return state.angle; },
+    get gpu() { return gpu; },
   };
 })();

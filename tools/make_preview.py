@@ -25,6 +25,18 @@ for k, f in enumerate(man["frames"]):
     d.text((x + 4, y + 4), f"{f['angle']}°" + ("  interp" if f["interpolated"] else "  redrawn" if f.get("redrawn") else ""), fill="white")
     d.rectangle([x, y + fh, x + fw - 1, y + fh + 21], fill=COL[t["flag"]])
     d.text((x + 4, y + fh + 5), f"-> next: IoU {t['iou']:.2f} {t['flag']}", fill="black")
-frames[0].save("docs/turnaround_preview.gif", save_all=True, append_images=frames[1:],
-               duration=90, loop=0, optimize=True, disposal=2)
+# smooth preview: 3° steps through the same morph the viewer uses
+import sys
+sys.path.insert(0, os.path.dirname(__file__))
+import flows  # noqa: E402
+import numpy as np  # noqa: E402
+drawn = flows.load_frames(man)
+fwd, bwd = flows.load_flows(man)
+gif = []
+for ang in np.arange(0, 360, 3.0):
+    bg = Image.new("RGBA", (fw, fh), BG)
+    bg.alpha_composite(Image.fromarray(flows.render(drawn, fwd, bwd, ang), "RGBA"))
+    gif.append(bg.convert("P", palette=Image.ADAPTIVE))
+gif[0].save("docs/turnaround_preview.gif", save_all=True, append_images=gif[1:],
+            duration=40, loop=0, optimize=True, disposal=2)
 sheet.save("docs/qa_contact_sheet.png", optimize=True)
