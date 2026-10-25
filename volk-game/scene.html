@@ -102,20 +102,6 @@ function column(r, x, w, h) {
   return { pts, l, rr, top, base: 0 };
 }
 
-// Скопление колонн: самая высокая сзади, ниже — впереди, как ступени.
-function cluster(r, w, h, flatChance) {
-  const n = 2 + (r() * 3 | 0), cols = [];
-  for (let i = 0; i < n; i++) {
-    const cw = w * (0.35 + r() * 0.35), ch = h * (i === 0 ? 1 : 0.45 + r() * 0.45);
-    const cx = (r() - 0.5) * (w - cw);
-    const rr2 = rng(r() * 1e9 | 0);
-    const col = r() < flatChance ? flatColumn(rr2, cx, cw, ch) : column(rr2, cx, cw, ch);
-    cols.push(col);
-  }
-  cols.sort((a, b) => a.top - b.top);
-  return cols;
-}
-
 // Столовая гора / останец: плоская вершина, отвесный уступ, осыпь у подножия.
 function flatColumn(r, x, w, h) {
   const topW = w * (0.55 + r() * 0.3), tl = x - topW / 2, tr = x + topW / 2, top = -h, foot = -h * (0.25 + r() * 0.2);
@@ -124,6 +110,137 @@ function flatColumn(r, x, w, h) {
     [tl + j(), -h * 0.55], [tl, top + 4], [tl + 4, top], [tr - 4, top + j()], [tr, top + 4],
     [tr + j(), -h * 0.55], [tr + (x + w / 2 - tr) * 0.35, foot], [x + w / 2, 0], [x + w / 2 + 10, 16]];
   return { pts, l: tl, rr: tr, top, base: 0 };
+}
+
+// ---------- Разнообразные формы скал ----------
+// Неровный край снизу вверх: изломы и уступы-полки. dir: -1 — левый край, 1 — правый.
+function edge(r, x0, x1, y1, dir, w, ledgy) {
+  const pts = [], n = 3 + (r() * 3 | 0), step = y1 / (n + 1);
+  for (let i = 1; i <= n; i++) {
+    const t = i / (n + 1), y = y1 * t, x = x0 + (x1 - x0) * t + (r() - 0.5) * w * 0.09;
+    if (r() < ledgy) {
+      const jut = dir * w * (0.05 + r() * 0.11);
+      pts.push([x, y], [x + jut, y + step * 0.12], [x + jut * 0.8, y + step * 0.55]);
+    } else pts.push([x, y]);
+  }
+  return pts;
+}
+
+function withBox(pts, h, extra) {
+  let l = 1e9, rr = -1e9;
+  for (const p of pts) { if (p[0] < l) l = p[0]; if (p[0] > rr) rr = p[0]; }
+  return Object.assign({ pts, l, rr, top: -h, base: 0 }, extra);
+}
+
+// Универсальный блок: ширина у основания w, у вершины topW, наклон lean, тип вершины,
+// нависающий край overhang (-1 влево, 1 вправо), трещины cracks.
+function block(r, x, w, h, o) {
+  const l0 = x - w / 2, r0 = x + w / 2, cx = x + (o.lean || 0), tw = o.topW;
+  const lt = cx - tw / 2, rt = cx + tw / 2, ty = -h, ledgy = o.ledgy == null ? 0.35 : o.ledgy;
+  const pts = [[l0 - w * (0.05 + r() * 0.12), 16], [l0, 0]];
+  const sideTop = o.overhang ? 0.78 : 0.9;
+  pts.push(...edge(r, l0, lt, -h * sideTop, -1, w, ledgy));
+  if (o.overhang === -1) {
+    const ox = w * (0.18 + r() * 0.14);
+    pts.push([lt + w * 0.04, -h * 0.8], [lt - ox, -h * (0.83 + r() * 0.03)], [lt - ox - w * 0.03, -h * 0.93]);
+  }
+  if (o.top === 'flat') {
+    const tilt = (r() - 0.5) * h * 0.06;
+    pts.push([lt, ty + 6 + tilt], [lt + 5, ty + tilt]);
+    if (r() < 0.5) { const nx = lt + tw * (0.3 + r() * 0.4); pts.push([nx - 6, ty + tilt * 0.5], [nx, ty + 5 + r() * 6], [nx + 5, ty]); }
+    pts.push([rt - 5, ty - tilt], [rt, ty + 6 - tilt]);
+  } else if (o.top === 'slant') {
+    const hi = r() < 0.5;
+    pts.push([lt, ty + (hi ? 0 : h * 0.18)], [lt + tw * 0.4, ty + (hi ? h * 0.04 : h * 0.12)], [rt, ty + (hi ? h * 0.2 : 0)]);
+  } else {
+    const k = 2 + (r() * 3 | 0);
+    pts.push([lt, ty + h * (0.05 + r() * 0.08)]);
+    for (let i = 1; i < k; i++) pts.push([lt + tw * i / k + (r() - 0.5) * tw * 0.15, ty + (i % 2 ? 0 : h * (0.04 + r() * 0.07)) + r() * 4]);
+    pts.push([rt, ty + h * (0.04 + r() * 0.1)]);
+  }
+  if (o.overhang === 1) {
+    const ox = w * (0.18 + r() * 0.14);
+    pts.push([rt + ox + w * 0.03, -h * 0.93], [rt + ox, -h * (0.83 + r() * 0.03)], [rt - w * 0.04, -h * 0.8]);
+  }
+  pts.push(...edge(r, r0, rt, -h * sideTop, 1, w, ledgy).reverse());
+  pts.push([r0, 0], [r0 + w * (0.05 + r() * 0.12), 16]);
+  return withBox(pts, h, { cracks: o.cracks || 0 });
+}
+
+// Арка: две ноги разной толщины, перемычка, неровный проём.
+function arch(r, x, w, h) {
+  const l0 = x - w / 2, r0 = x + w / 2, lw = w * (0.2 + r() * 0.1), rw = w * (0.24 + r() * 0.12);
+  const il = l0 + lw, ir = r0 - rw, oh = h * (0.5 + r() * 0.15), ty = -h;
+  const pts = [[l0 - w * 0.08, 16], [l0, 0]];
+  pts.push(...edge(r, l0, l0 + w * 0.05, -h * 0.85, -1, w * 0.6, 0.3));
+  pts.push([l0 + w * 0.06, ty + h * 0.1], [l0 + w * 0.2, ty + 4], [x + (r() - 0.5) * w * 0.2, ty + r() * 6],
+    [r0 - w * 0.15, ty + h * (0.03 + r() * 0.06)], [r0 - w * 0.03, ty + h * 0.14]);
+  pts.push(...edge(r, r0, r0 - w * 0.04, -h * 0.85, 1, w * 0.6, 0.3).reverse());
+  pts.push([r0, 0], [r0 + w * 0.08, 16], [ir + w * 0.03, 16], [ir, 0]);
+  const n = 9;
+  for (let i = 0; i <= n; i++) {
+    const a = i / n * Math.PI, jx = i > 0 && i < n ? (r() - 0.5) * w * 0.04 : 0, jy = i > 0 && i < n ? (r() - 0.5) * h * 0.05 : 0;
+    const px = (il + ir) / 2 + Math.cos(a) * (ir - il) / 2 + jx;
+    const py = Math.sin(a) > 0.3 ? -oh * Math.pow(Math.sin(a), 0.6) + jy : -oh * 0.45 * Math.sin(a) / 0.3;
+    pts.push([px, py]);
+  }
+  pts.push([il, 0], [il - w * 0.03, 16]);
+  return withBox(pts, h, { cracks: 1 });
+}
+
+const TYPES = {
+  near: [['pillar', 2], ['lean', 1.5], ['overhang', 1.5], ['cracked', 1.5], ['cluster', 2.5], ['table', 0.8]],
+  mid: [['table', 2.5], ['pillar', 1.5], ['lean', 1], ['overhang', 1], ['cracked', 1], ['cluster', 2], ['arch', 0.8]],
+  far: [['table', 4], ['cluster', 1.5], ['pillar', 1], ['lean', 1], ['cracked', 0.6]],
+};
+function pickType(r, list) {
+  let sum = 0; for (const [, wgt] of list) sum += wgt;
+  let v = r() * sum;
+  for (const [t, wgt] of list) { if ((v -= wgt) <= 0) return t; }
+  return list[0][0];
+}
+
+// Одна скала заданного типа; x — смещение внутри скопления.
+function shape(r, type, x, w, h) {
+  const side = r() < 0.5 ? -1 : 1;
+  switch (type) {
+    case 'pillar': {
+      const pw = w * (0.26 + r() * 0.14);
+      return block(r, x, pw, h * (1 + r() * 0.15), { topW: pw * (0.7 + r() * 0.6), lean: (r() - 0.5) * pw * 0.5, top: r() < 0.5 ? 'flat' : 'peak', ledgy: 0.45 });
+    }
+    case 'table': {
+      const th = h * (0.4 + r() * 0.2);
+      return block(r, x, w, th, { topW: w * (0.6 + r() * 0.25), lean: (r() - 0.5) * w * 0.12, top: 'flat', ledgy: 0.55 });
+    }
+    case 'lean': {
+      const lw = w * (0.4 + r() * 0.15);
+      return block(r, x - side * lw * 0.2, lw, h * (0.8 + r() * 0.2), { topW: lw * (0.5 + r() * 0.3), lean: side * lw * (0.45 + r() * 0.35), top: 'slant', ledgy: 0.3 });
+    }
+    case 'overhang': {
+      const ow = w * (0.45 + r() * 0.2);
+      return block(r, x - side * ow * 0.15, ow, h * (0.75 + r() * 0.2), { topW: ow * (0.6 + r() * 0.2), lean: side * ow * 0.08, top: 'flat', overhang: side, ledgy: 0.3 });
+    }
+    case 'cracked': {
+      const cw = w * (0.55 + r() * 0.25);
+      return block(r, x, cw, h * (0.85 + r() * 0.15), { topW: cw * (0.55 + r() * 0.3), lean: (r() - 0.5) * cw * 0.2, top: r() < 0.6 ? 'peak' : 'flat', cracks: 2 + (r() * 2 | 0), ledgy: 0.35 });
+    }
+    case 'arch':
+      return arch(r, x, w, h * (0.8 + r() * 0.2));
+  }
+}
+
+// Скала целиком: одиночная форма или скопление из разных форм, высокая — сзади.
+function rockShape(r, type, w, h, set) {
+  if (type !== 'cluster') return [shape(r, type, (r() - 0.5) * w * 0.1, w, h)];
+  const n = 2 + (r() * 2 | 0), cols = [];
+  for (let i = 0; i < n; i++) {
+    let t = pickType(r, TYPES[set]);
+    if (t === 'cluster' || t === 'arch') t = 'pillar';
+    const sw = w * (0.45 + r() * 0.3), sh = h * (i === 0 ? 1 : 0.45 + r() * 0.4);
+    cols.push(shape(r, t, (r() - 0.5) * (w - sw * 0.6), sw, sh));
+  }
+  cols.sort((a, b) => a.top - b.top);
+  return cols;
 }
 
 // Раскраска колонны крупными гранями: свет справа (солнце справа сверху), тень слева.
@@ -173,6 +290,17 @@ function paintColumn(c, col, pal, r) {
     const d = Math.min(18, h * 0.06 + 6), cap = capPts.map(p => [p[0], p[1] - 2]);
     for (let i = capPts.length - 1; i >= 0; i--) cap.push([capPts[i][0] - 3, capPts[i][1] + d]);
     poly(c, cap); c.fillStyle = pal.top; c.globalAlpha = 0.9; c.fill(); c.globalAlpha = 1;
+  }
+  // Трещины: ломаная тёмная щель со светлой кромкой справа.
+  for (let k = 0; k < (col.cracks || 0); k++) {
+    let x = l + w * (0.2 + r() * 0.6), y = top + h * (0.02 + r() * 0.2);
+    const len = h * (0.3 + r() * 0.45), seg = 5, pts2 = [[x, y]];
+    for (let i = 0; i < seg; i++) { x += (r() - 0.5) * w * 0.12; y += len / seg; pts2.push([x, y]); }
+    const wd = Math.max(2.5, w * 0.025);
+    poly(c, [...pts2.map(p => [p[0] - wd * 0.5, p[1]]), ...pts2.slice().reverse().map((p, i) => [p[0] + wd * (0.5 + 0.5 * (i / seg)), p[1]])]);
+    c.fillStyle = pal.deep; c.fill();
+    c.beginPath(); pts2.forEach((p, i) => i ? c.lineTo(p[0] + wd * 1.2, p[1]) : c.moveTo(p[0] + wd * 1.2, p[1]));
+    c.lineWidth = 1.5; c.strokeStyle = pal.edge; c.globalAlpha = 0.6; c.stroke(); c.globalAlpha = 1;
   }
   // Горизонтальные уступы.
   const nl = Math.max(1, h / 90 | 0);
@@ -246,6 +374,7 @@ const ROWS = [
   { z: 1.08, kind: 'bush', cell: 230, p: 0.45 },
 ];
 const HERO_O = 195;
+const ARCH = { z: 4.6, o: -175, w: 175, h: 165 };   // арка слева от дороги в средней дали
 
 function rowItems(row, ri, out) {
   const z = row.z, y = yAt(z), shift = cam / z;
@@ -261,6 +390,9 @@ function rowItems(row, ri, out) {
     }), sxGround(HERO_O, z), y) });
     return;
   }
+  if (row.z === ARCH.z) {
+    out.push({ z, o: ARCH.o, draw: () => drawSprite(sprite('arch', () => ({ cols: [arch(rng(4321), 0, ARCH.w, ARCH.h)], pal: PAL.mid, seed: 99 })), sxGround(ARCH.o, z), y) });
+  }
   const half = viewW / 2 + 420;
   const i0 = Math.floor((shift - half) / row.cell), i1 = Math.ceil((shift + half) / row.cell);
   for (let i = i0; i <= i1; i++) {
@@ -271,10 +403,11 @@ function rowItems(row, ri, out) {
       const w = row.w[0] + r() * (row.w[1] - row.w[0]), h = row.h[0] + r() * (row.h[1] - row.h[0]);
       if (Math.abs(o - roadC(z)) < roadHW(z) + w * 0.55 + 20) continue;
       if (z > 6 && Math.abs(o - HERO_O) < 170 + w * 0.5) continue;
+      if (row.z === ARCH.z && Math.abs(o - ARCH.o) < ARCH.w * 0.5 + w * 0.5) continue;
       const seed = r() * 1e9 | 0;
       out.push({ z, o, draw: () => drawSprite(sprite(`${ri}:${i}`, () => {
-        const rr = rng(seed);
-        return { cols: cluster(rr, w, h, row.flat), pal: PAL[row.pal], seed: rr() * 1e9 | 0, shadow: row.shadow ? castShadow(w, h * 0.35) : null };
+        const rr = rng(seed), set = row.pal === 'near' ? 'near' : row.pal;
+        return { cols: rockShape(rr, pickType(rng(hash(seed, 1)), TYPES[set]), w, h, set), pal: PAL[row.pal], seed: rr() * 1e9 | 0, shadow: row.shadow ? castShadow(w, h * 0.35) : null };
       }), sxGround(o, z), y) });
     } else {
       const s = (z < 1.5 ? 1.5 : 1) * (0.7 + r() * 0.6) * 38 / z;
@@ -417,7 +550,7 @@ function drawFront() {
     const w = 260 + r() * 160, h = 260 + r() * 460, seed = r() * 1e9 | 0;
     drawSprite(sprite(`front:${i}`, () => {
       const rr = rng(seed);
-      return { cols: cluster(rr, w, h, 0.1), pal: PAL.near, seed: rr() * 1e9 | 0 };
+      return { cols: rockShape(rr, pickType(rng(hash(seed, 1)), TYPES.near), w, h, 'near'), pal: PAL.near, seed: rr() * 1e9 | 0 };
     }), viewW / 2 + o - shift, H + 30);
   }
 }
