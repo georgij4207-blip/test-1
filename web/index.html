@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Койот 360°</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="app">
+  <header class="top">
+    <h1>Койот 360°</h1>
+    <p class="hint">Тяните мышью или пальцем. Клавиши ← → — шаг, пробел — авто.</p>
+  </header>
+
+  <div class="stage" id="stage" tabindex="0" aria-label="Персонаж, вращение перетаскиванием">
+    <canvas id="view"></canvas>
+    <div class="badge" id="badge" hidden>интерполированный кадр</div>
+    <div class="loading" id="loading">Загрузка…</div>
+  </div>
+
+  <section class="hud">
+    <div class="readout">
+      <span class="angle" id="angle">0°</span>
+      <span class="source" id="source"></span>
+    </div>
+    <input id="dial" class="dial" type="range" min="0" max="359.9" step="0.1" value="0" aria-label="Угол поворота">
+  </section>
+
+  <section class="controls">
+    <button id="play" class="btn primary" aria-pressed="false">▶ Авто</button>
+    <button id="dir" class="btn" title="Направление авто-вращения">⟳</button>
+    <label class="field">Скорость
+      <input id="speed" type="range" min="5" max="180" step="5" value="45">
+      <output id="speedOut">45°/с</output>
+    </label>
+    <label class="field">Кадры
+      <select id="set">
+        <option value="10">36 · шаг 10° (исходные)</option>
+        <option value="5">72 · шаг 5° (+интерполяция)</option>
+      </select>
+    </label>
+    <label class="check"><input id="blend" type="checkbox"> Сглаживание между кадрами</label>
+    <label class="check"><input id="snap" type="checkbox" checked> Доводка к ракурсу</label>
+  </section>
+</main>
+<script src="assets/manifest.js"></script>
+<script src="viewer.js"></script>
+</body>
+</html>

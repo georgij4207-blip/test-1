@@ -1,0 +1,372 @@
+{
+ "frameWidth": 200,
+ "frameHeight": 270,
+ "columns": 6,
+ "count": 36,
+ "stepDegrees": 10,
+ "baselineY": 256,
+ "axisX": 100,
+ "sprite": "assets/coyote_sprite.png",
+ "frames": [
+  {
+   "angle": 0,
+   "source": "лист, 0°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.744,
+    "color_diff": 35.3,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 10,
+   "source": "лист, 10°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.765,
+    "color_diff": 33.3,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 20,
+   "source": "лист, 20°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.755,
+    "color_diff": 30.8,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 30,
+   "source": "лист, 30°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.738,
+    "color_diff": 37.2,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 40,
+   "source": "лист, 40°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.824,
+    "color_diff": 29.9,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 50,
+   "source": "лист, 50°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.837,
+    "color_diff": 25.1,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 60,
+   "source": "лист, 60°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.816,
+    "color_diff": 27.5,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 70,
+   "source": "лист, 70°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.872,
+    "color_diff": 21.7,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 80,
+   "source": "интерполяция (оптический поток 70°↔90°)",
+   "interpolated": true,
+   "to_next": {
+    "iou": 0.872,
+    "color_diff": 21.3,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 90,
+   "source": "лист, 90°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.714,
+    "color_diff": 30.3,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 100,
+   "source": "лист, 100°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.776,
+    "color_diff": 24.9,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 110,
+   "source": "лист, 110°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.872,
+    "color_diff": 22.1,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 120,
+   "source": "лист, 120°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.851,
+    "color_diff": 19.4,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 130,
+   "source": "лист, 130°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.862,
+    "color_diff": 19.1,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 140,
+   "source": "лист, 140°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.832,
+    "color_diff": 21.4,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 150,
+   "source": "лист, 150°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.784,
+    "color_diff": 20.5,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 160,
+   "source": "лист, 160°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.813,
+    "color_diff": 16.5,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 170,
+   "source": "лист, 170°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.541,
+    "color_diff": 24.4,
+    "flag": "jump"
+   }
+  },
+  {
+   "angle": 180,
+   "source": "лист, 180°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.362,
+    "color_diff": 22.2,
+    "flag": "jump"
+   }
+  },
+  {
+   "angle": 190,
+   "source": "зеркало 170°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.813,
+    "color_diff": 16.5,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 200,
+   "source": "зеркало 160°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.784,
+    "color_diff": 20.5,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 210,
+   "source": "зеркало 150°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.832,
+    "color_diff": 21.4,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 220,
+   "source": "зеркало 140°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.862,
+    "color_diff": 19.1,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 230,
+   "source": "зеркало 130°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.851,
+    "color_diff": 19.4,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 240,
+   "source": "зеркало 120°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.872,
+    "color_diff": 22.1,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 250,
+   "source": "зеркало 110°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.776,
+    "color_diff": 24.9,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 260,
+   "source": "зеркало 100°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.714,
+    "color_diff": 30.3,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 270,
+   "source": "зеркало 90°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.872,
+    "color_diff": 21.3,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 280,
+   "source": "зеркало 80° (интерполяция)",
+   "interpolated": true,
+   "to_next": {
+    "iou": 0.872,
+    "color_diff": 21.7,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 290,
+   "source": "зеркало 70°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.816,
+    "color_diff": 27.5,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 300,
+   "source": "зеркало 60°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.837,
+    "color_diff": 25.1,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 310,
+   "source": "зеркало 50°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.824,
+    "color_diff": 29.9,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 320,
+   "source": "зеркало 40°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.738,
+    "color_diff": 37.2,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 330,
+   "source": "зеркало 30°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.755,
+    "color_diff": 30.8,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 340,
+   "source": "зеркало 20°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.765,
+    "color_diff": 33.3,
+    "flag": "ok"
+   }
+  },
+  {
+   "angle": 350,
+   "source": "зеркало 10°",
+   "interpolated": false,
+   "to_next": {
+    "iou": 0.616,
+    "color_diff": 38.4,
+    "flag": "jump"
+   }
+  }
+ ]
+}
