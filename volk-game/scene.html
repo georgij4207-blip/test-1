@@ -12,16 +12,10 @@
     touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; cursor: grab; }
   canvas:active { cursor: grabbing; }
-  #rotate { display: none; position: fixed; inset: 0; z-index: 2; background: #7fb0ea; color: #3a2a3a;
-    font: 600 20px/1.4 system-ui, sans-serif; align-items: center; justify-content: center;
-    text-align: center; padding: 24px; }
-  #rotate .ico { font-size: 64px; line-height: 1; margin-bottom: 12px; }
-  @media (orientation: portrait) { #rotate { display: flex; } }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="rotate"><div><div class="ico">⟳</div>Поверните устройство горизонтально</div></div>
 <script>
 'use strict';
 
@@ -595,9 +589,7 @@ cvs.addEventListener('pointerdown', e => {
   drag = { id: e.pointerId, x: e.clientX, cam0: cam, lx: e.clientX, lt: performance.now(), v: 0 };
   const d = document.documentElement;
   if (e.pointerType !== 'mouse' && !document.fullscreenElement && d.requestFullscreen) {
-    d.requestFullscreen().then(() => {
-      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
-    }).catch(() => {});
+    d.requestFullscreen().catch(() => {});
   }
 });
 cvs.addEventListener('pointermove', e => {
