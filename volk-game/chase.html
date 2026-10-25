@@ -24,7 +24,7 @@
 <script>
 'use strict';
 
-// Погоня в боковом виде. Сцена в «единицах»: высота экрана 720 ед., ширина по пропорциям.
+// Погоня в боковом виде по раскадровке из 24 панелей. Сцена в «единицах»: высота экрана 720 ед.
 const H = 720;
 const TAU = Math.PI * 2;
 const cvs = document.getElementById('c');
@@ -324,7 +324,13 @@ function drawWolf(c, X0, Y0, S, st) {
     limb([sh, el, hand], 0.055, 0.03, WC.fur);
     const hq = proj(hand);
     add(hq[2] + 0.031, () => { blob(c, hq[0], hq[1], S * 0.05, S * 0.047, WC.line); blob(c, hq[0], hq[1], S * 0.05 - lw, S * 0.047 - lw, WC.paw); });
-    if (st.hand && i === 1) add(hq[2] + 0.04, () => drawHandItem(c, hq, S, st));
+    const item = i === 1 ? st.handR : st.handL;
+    if (item) add(hq[2] + 0.04, () => drawHandItem(c, hq, S, item, st));
+  }
+  // Ракета за спиной.
+  if (st.backRocket) {
+    const a = proj(body([0, -0.36, -0.17])), b = proj(body([0, -0.82, -0.17]));
+    add(a[2] - 0.01, () => drawRocket(c, a, b, S * 0.042, st.flame, st.tick, 9));
   }
   // Туловище: светлый живот спереди, тёмная полоса на спине.
   ell([0, -0.5, 0], [0.14, 0.2, 0.12], 0, WC.fur, () => {
@@ -512,8 +518,59 @@ function drawSkate(c, h, t, S, st, i) {
   }
 }
 
-function drawHandItem(c, hq, S, st) {
-  drawSkate(c, [hq[0] - S * 0.07, hq[1] + S * 0.01], [hq[0] + S * 0.07, hq[1] + S * 0.01], S * 0.9, { flame: 0 }, 0);
+// Ракета по оси от донца к носу: корпус, белая полоса, нос, стабилизаторы, пламя из донца.
+function drawRocket(c, bot, top, r, flame, t, i) {
+  let ux = top[0] - bot[0], uy = top[1] - bot[1];
+  const L = Math.hypot(ux, uy) || 1; ux /= L; uy /= L;
+  const nx = -uy, ny = ux, lw = Math.max(0.8, r * 0.3);
+  c.lineWidth = lw; c.strokeStyle = LINE; c.lineJoin = 'round';
+  if (flame > 0) {
+    const k = 0.75 + 0.5 * fl(t || 0, i), fLen = r * (2 + 7 * flame) * k;
+    poly(c, [[bot[0] + nx * r * 1.1, bot[1] + ny * r * 1.1], [bot[0] - ux * fLen, bot[1] - uy * fLen], [bot[0] - nx * r * 1.1, bot[1] - ny * r * 1.1]]);
+    c.fillStyle = '#f08a24'; c.fill();
+    poly(c, [[bot[0] + nx * r * 0.6, bot[1] + ny * r * 0.6], [bot[0] - ux * fLen * 0.6, bot[1] - uy * fLen * 0.6], [bot[0] - nx * r * 0.6, bot[1] - ny * r * 0.6]]);
+    c.fillStyle = '#ffe36b'; c.fill();
+  }
+  poly(c, [[bot[0] - nx * r * 1.9, bot[1] - ny * r * 1.9], [bot[0] + ux * r * 2.2 - nx * r, bot[1] + uy * r * 2.2 - ny * r],
+    [bot[0] + ux * r * 2.2 + nx * r, bot[1] + uy * r * 2.2 + ny * r], [bot[0] + nx * r * 1.9, bot[1] + ny * r * 1.9]]);
+  c.fillStyle = '#8c2d2d'; c.fill(); c.stroke();
+  poly(c, [[bot[0] + nx * r, bot[1] + ny * r], [top[0] + nx * r, top[1] + ny * r], [top[0] - nx * r, top[1] - ny * r], [bot[0] - nx * r, bot[1] - ny * r]]);
+  c.fillStyle = '#d63a35'; c.fill(); c.stroke();
+  const m1 = [bot[0] + ux * L * 0.55, bot[1] + uy * L * 0.55], m2 = [bot[0] + ux * L * 0.68, bot[1] + uy * L * 0.68];
+  poly(c, [[m1[0] + nx * r, m1[1] + ny * r], [m2[0] + nx * r, m2[1] + ny * r], [m2[0] - nx * r, m2[1] - ny * r], [m1[0] - nx * r, m1[1] - ny * r]]);
+  c.fillStyle = '#f3ece0'; c.fill();
+  poly(c, [[top[0] + nx * r, top[1] + ny * r], [top[0] + ux * r * 2.4, top[1] + uy * r * 2.4], [top[0] - nx * r, top[1] - ny * r]]);
+  c.fillStyle = '#ece4d8'; c.fill(); c.stroke();
+}
+
+function sparkle(c, x, y, r, t, i) {
+  c.strokeStyle = '#ffd34d'; c.lineWidth = Math.max(1, r * 0.15); c.lineCap = 'round';
+  for (let k = 0; k < 6; k++) {
+    const a = k * Math.PI / 3 + fl(t, i + k) * 0.6, d = r * (0.6 + fl(t, i * 3 + k) * 0.8);
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d); c.stroke();
+  }
+  c.strokeStyle = LINE;
+}
+
+// Предмет в лапе: моток шнура, ракета (с горящим фитилём) или ролики.
+function drawHandItem(c, hq, S, item, st) {
+  const t = st.tick || 0;
+  if (item === 'wire') {
+    c.lineWidth = Math.max(1, S * 0.012); c.strokeStyle = '#7a4a2a';
+    for (let k = 0; k < 3; k++) { c.beginPath(); c.ellipse(hq[0] + S * 0.01 * k, hq[1] + S * 0.035, S * 0.07, S * 0.045, 0.3, 0, TAU); c.stroke(); }
+    c.beginPath(); c.moveTo(hq[0] + S * 0.05, hq[1] + S * 0.07);
+    c.quadraticCurveTo(hq[0] + S * 0.2, hq[1] + S * 0.4, hq[0] + S * 0.32, GROUND - S * 0.03 - (hq[1] - hq[1]));
+    c.stroke();
+  } else if (item === 'rocket' || item === 'rocketLit') {
+    drawRocket(c, [hq[0], hq[1] + S * 0.1], [hq[0], hq[1] - S * 0.16], S * 0.032, 0, t, 2);
+    if (item === 'rocketLit') {
+      c.beginPath(); c.moveTo(hq[0], hq[1] + S * 0.12); c.quadraticCurveTo(hq[0] + S * 0.04, hq[1] + S * 0.16, hq[0] + S * 0.02, hq[1] + S * 0.2);
+      c.lineWidth = Math.max(1, S * 0.008); c.strokeStyle = '#4a3a30'; c.stroke();
+      sparkle(c, hq[0] + S * 0.02, hq[1] + S * 0.2, S * 0.04, t, 4);
+    }
+  } else if (item === 'skates') {
+    drawSkate(c, [hq[0] - S * 0.07, hq[1] + S * 0.01], [hq[0] + S * 0.07, hq[1] + S * 0.01], S * 0.9, { flame: 0 }, 0);
+  }
 }
 
 function drawCrate(x, y, S, open) {
@@ -640,80 +697,92 @@ const LEGS2 = {
   flail1: { foot: [[0, 0.06], [-0.06, -0.14]], hand: [[-0.64, 0.22], [-1.0, -0.08]], knee: 0.13 },
   splat: { foot: [[-0.05, 0.08], [0, 0.06]], hand: [[-0.95, 0.14], [-0.9, 0.12]], knee: 0.03 },
   sit: { foot: [[-0.2, 0.32], [-0.2, 0.3]], hand: [[-0.3, 0.06], [-0.3, 0.06]], knee: 0.13 },
+  raise: { foot: [[0, 0.02], [0, 0.05]], hand: [[-0.46, -0.06], [-1.02, 0.1]], knee: 0.01 },
+  two: { foot: [[0, 0.03], [0, 0.04]], hand: [[-0.98, 0.12], [-0.98, 0.12]], knee: 0.01 },
 };
 Object.assign(LEGS, LEGS2);
 
-// ---------- Раскадровка, 12 ключевых кадров в секунду ----------
-const TL = [];
-let X_W = 0, X_LAUNCH = -260, T_LAUNCH = 0, T_CHASE = 0, T_MALF = 0, T_IMPACT = 0, T_DAZE = 0, B_STOP = 0;
+// ---------- Раскадровка: 24 панели, 12 ключевых кадров в секунду ----------
+const TL = [], PANELS = [];
+let X_W = 0, X_LAUNCH = -260, T_LAUNCH = 0, T_BOOM = 0, T_CRASH = 0, T_OW = 0;
 (function build() {
-  const base = { wx: X_LAUNCH, cam: 0, view: 45, legs: 'think', pitch: 0, roll: 0, bob: 0, earA: 0, tf: 0, tailWave: 0, face: 'neutral',
-    skates: false, flame: 0, hand: null, drop: 0, soot: false, crate: false, bx: 0, by: GROUND, bdir: 1, bmode: 'hide', blook: false, shake: 0, stars: false, sparks: false, smoke: false };
-  const push = o => TL.push(Object.assign({}, base, o));
-  let k, wx = X_LAUNCH;
-  // 1. Замысел у ящика; под конец — идея, ухмылка.
-  for (k = 0; k < 18; k++) push({ face: k >= 12 ? 'grin' : 'neutral', earA: k >= 12 ? 0.15 : 0 });
-  // 2. Достаёт ракетные ролики.
-  for (k = 0; k < 12; k++) push({ legs: 'hold', hand: 'skates', face: 'grin', crate: true });
-  // 3. Надевает.
-  for (k = 0; k < 8; k++) push({ legs: 'crouch', pitch: -0.4, face: 'grin', crate: true, skates: k >= 4 });
-  // 4. Готов: встал на ролики, хитро смотрит в камеру.
-  for (k = 0; k < 14; k++) push({ legs: 'skate', face: 'smug', crate: true, skates: true });
-  // 5. Зажигание: пламя разгорается, ролики дрожат.
-  for (k = 0; k < 10; k++) push({ view: 90, legs: 'skate', skates: true, crate: true, flame: 0.1 + k * 0.04, roll: k % 2 ? 0.03 : -0.03, face: 'grin', sparks: true });
-  // 6. Старт — «ВЖУХ!», разгон.
+  const base = { wx: X_LAUNCH, cam: 0, view: 45, legs: 'think', pitch: 0, roll: 0, bob: 0, lift: 0, earA: 0, tf: 0, tailWave: 0, face: 'neutral',
+    skates: false, backRocket: false, flame: 0, handL: null, handR: null, groundRocket: false, drop: 0, soot: false, crate: false,
+    bx: 0, by: GROUND, bdir: 1, bmode: 'hide', blook: false, shake: 0, stars: false, sparks: false, smoke: false, caption: '' };
+  const P = (n, dur, f) => { PANELS.push(TL.length); for (let k = 0; k < dur; k++) TL.push(Object.assign({}, base, { panel: n }, f(k, dur))); };
+  let wx = X_LAUNCH;
+  const mv = (o) => Object.assign({ wx, cam: Math.max(0, wx + 220), view: 90, legs: 'ride', skates: true, backRocket: true, flame: 1,
+    pitch: -0.5, earA: -0.75, tf: -0.5, face: 'grin' }, o);
+  const ride = k => ({ legs: k % 4 < 2 ? 'ride' : 'ride2', bob: k % 2 ? -0.015 : 0, earA: -0.75 + (k % 2) * 0.1, tailWave: k % 2 ? 1 : -1 });
+
+  // 1. Замысел.
+  P(1, 14, k => ({ caption: 'Замысел', face: k > 9 ? 'grin' : 'neutral', earA: k > 9 ? 0.15 : 0 }));
+  // 2. Достаёт шнур, ракета лежит на земле.
+  P(2, 12, () => ({ legs: 'hold', handR: 'wire', crate: true, groundRocket: true, face: 'grin' }));
+  // 3. Поднимает ракету с горящим фитилём.
+  P(3, 12, () => ({ legs: 'raise', handR: 'rocketLit', crate: true, face: 'grin' }));
+  // 4. Две ракеты.
+  P(4, 12, () => ({ view: 0, legs: 'two', handR: 'rocket', handL: 'rocket', crate: true, face: 'grin', earA: 0.1 }));
+  // 5. Одна ракета за спиной, вторая в лапе.
+  P(5, 12, () => ({ legs: 'raise', handR: 'rocket', backRocket: true, crate: true, face: 'smug' }));
+  // 6. Ракетные ролики готовы.
+  P(6, 14, () => ({ legs: 'skate', skates: true, backRocket: true, crate: true, face: 'smug', caption: 'Ракетные ролики готовы!' }));
+  // 7. Старт: искры, пламя разгорается, всё дрожит.
+  P(7, 10, k => ({ legs: 'skate', skates: true, backRocket: true, crate: true, flame: 0.15 + k * 0.03, sparks: true,
+    roll: k % 2 ? 0.035 : -0.035, face: 'grin', caption: 'Старт!' }));
+  // 8. Взлёт — «ВЖУХ!».
   T_LAUNCH = TL.length;
-  for (k = 1; k <= 10; k++) {
-    wx = X_LAUNCH + V * k * k / 20;
-    push({ wx, cam: Math.max(0, wx + 220), view: 90, legs: 'ride', pitch: -0.5, skates: true, crate: true, flame: 1, earA: -0.7, tf: -0.5, face: 'grin' });
+  P(8, 8, k => { wx += 18 + k * 16; return mv({ lift: Math.min(1, (k + 1) / 3) * 0.24, pitch: -0.65, legs: 'ride', crate: true }); });
+  // 9. Низко над дорогой.
+  P(9, 8, k => { wx += V; return mv({ lift: 0.24 * (1 - (k + 1) / 8), pitch: -0.55 }); });
+  // 10–12. Погоня на полной скорости.
+  for (const n of [10, 11, 12]) P(n, n === 12 ? 12 : 10, k => { wx += V; return mv(Object.assign(ride(k), n === 12 ? { caption: 'Погоня на полной скорости!' } : {})); });
+  // 13–18. Птица впереди, волк догоняет.
+  const durs = { 13: 12, 14: 10, 15: 10, 16: 10, 17: 10, 18: 12 }, total = 64;
+  let ck = 0;
+  for (const n of [13, 14, 15, 16, 17, 18]) {
+    P(n, durs[n], k => {
+      wx += V;
+      const g = 650 - (ck++ / total) * 410;
+      return mv(Object.assign(ride(k), { bx: wx + g, bmode: 'run', blook: n === 16 || n === 17,
+        caption: n === 13 ? 'Догоняет!' : n === 18 ? 'Совсем близко!' : '' }));
+    });
   }
-  // 7. Погоня: догоняет птицу, та оглядывается.
-  T_CHASE = TL.length;
-  const CH = 72;
-  for (k = 1; k <= CH; k++) {
+  // 19. Поломка: дым, ракеты чихают; птица уносится вперёд.
+  P(19, 14, k => {
     wx += V;
-    const g = k < 10 ? 1100 - k * 40 : 700 - (k - 10) * (440 / (CH - 10));
-    push({ wx, cam: wx + 220, view: 90, legs: k % 4 < 2 ? 'ride' : 'ride2', bob: k % 2 ? -0.015 : 0, pitch: -0.5, skates: true, flame: 1,
-      earA: -0.75 + (k % 2) * 0.1, tf: -0.5, tailWave: k % 2 ? 1 : -1, face: 'grin', bx: wx + g, bmode: 'run', blook: k >= 40 && k < 50 });
-  }
-  // 8. Поломка: ракеты чихают и дымят, волка мотает. Птица тормозит и отходит в сторону.
-  T_MALF = TL.length;
-  const M = 20;
-  X_W = wx + V * M + 0.33 * S_W + 4;
-  B_STOP = X_W - 420;
-  let stop = -1;
-  for (k = 1; k <= M; k++) {
+    return mv({ legs: (k >> 1) % 2 ? 'flail1' : 'flail0', pitch: -0.3, roll: k % 2 ? 0.1 : -0.08, flame: 0.2 + 0.8 * ((hash(k, 9) % 100) / 100),
+      smoke: true, earA: -0.4, tf: k % 2 ? 0.3 : -0.3, face: 'shock', bx: wx + 240 + k * k * 12, bmode: 'run', caption: 'Поломка!' });
+  });
+  // 20. Ролики искрят и разваливаются, волка мотает.
+  P(20, 12, k => {
     wx += V;
-    let bx = wx + 260 + k * 45, bmode = 'run', by = GROUND, bdir = 1, blook = false;
-    if (bx >= B_STOP) {
-      if (stop < 0) stop = k;
-      const a = k - stop;
-      bx = B_STOP; bmode = a < 2 ? 'skid' : 'stand'; by = GROUND + Math.min(1, a / 3) * 55; bdir = a < 3 ? 1 : -1; blook = a >= 3;
-    }
-    push({ wx, cam: wx + 220, view: 90, legs: (k >> 1) % 2 ? 'flail1' : 'flail0', pitch: -0.3, roll: k % 2 ? 0.12 : -0.1, skates: true,
-      flame: 0.2 + 0.8 * ((hash(k, 9) % 100) / 100), smoke: true, earA: -0.4, tf: k % 2 ? 0.3 : -0.3, face: 'shock', bx, by, bmode, bdir, blook });
-  }
-  // 9. Удар: «БА-БАХ!», «ХРЯСЬ!», волк распластан по скале.
-  T_IMPACT = TL.length;
-  const xs = X_W - 0.33 * S_W, bird = { bx: B_STOP, by: GROUND + 55, bmode: 'stand', bdir: -1, blook: true };
-  for (k = 0; k < 10; k++) push(Object.assign({ wx: xs, cam: xs + 220, view: 90, legs: 'splat', pitch: 0.05, soot: true, earA: 1.2 - k * 0.08, tf: 1 - k * 0.08, face: 'shock', shake: k < 6 ? 1 : 0 }, bird));
-  // 10. Сползает и садится, в глазах звёзды.
-  for (k = 0; k < 10; k++) {
-    push(Object.assign({ wx: xs - k * 0.012 * S_W, cam: xs + 220, view: k < 6 ? 90 : k < 8 ? 45 : 0, legs: k < 4 ? 'splat' : 'sit', drop: Math.min(0.2, k * 0.025),
-      soot: true, earA: 0.2 - k * 0.06, tf: -0.3, face: 'dazed', stars: k >= 6 }, bird));
-  }
-  // 11. «ОЙ!». Птица дразнится и убегает.
-  T_DAZE = TL.length;
+    return mv({ legs: (k >> 1) % 2 ? 'flail1' : 'flail0', pitch: -0.2, roll: k % 2 ? 0.14 : -0.12, flame: 0.3 + 0.7 * ((hash(k, 19) % 100) / 100),
+      smoke: true, sparks: true, earA: -0.2, tf: k % 2 ? 0.4 : -0.2, face: 'shock' });
+  });
+  // 21. Удар о скалу.
+  X_W = wx + 2 * V + 0.33 * S_W + 4;
+  const xs = X_W - 0.33 * S_W;
+  P(21, 6, k => {
+    if (k < 2) { wx += V; return mv({ legs: 'flail0', pitch: -0.2, flame: 0.6, smoke: true, face: 'shock', earA: 0.6, tf: 0.6 }); }
+    return { wx: xs, cam: xs + 220, view: 90, legs: 'splat', pitch: 0.05, earA: 1.2, tf: 1, face: 'shock', shake: 1, soot: true };
+  });
+  // 22. «БА-БАХ!»
+  T_BOOM = TL.length;
+  P(22, 10, k => ({ wx: xs, cam: xs + 220, view: 90, legs: 'splat', pitch: 0.05, soot: true, earA: 1.2 - k * 0.06, tf: 1 - k * 0.06, face: 'shock', shake: k < 6 ? 1 : 0 }));
+  // 23. «ХРЯСЬ!» — сползает по скале.
+  T_CRASH = TL.length;
+  P(23, 14, k => ({ wx: xs - Math.max(0, k - 4) * 0.012 * S_W, cam: xs + 220, view: k < 8 ? 90 : k < 10 ? 45 : 0, legs: k < 6 ? 'splat' : 'sit',
+    drop: Math.min(0.2, Math.max(0, k - 4) * 0.025), soot: true, earA: 0.3 - k * 0.05, tf: -0.3, face: 'dazed', stars: k >= 10 }));
+  // 24. «ОЙ!» Птица пробегает мимо: «Пи-пи!»
+  T_OW = TL.length;
   const xd = xs - 0.12 * S_W;
-  for (k = 0; k < 44; k++) {
-    const run = k >= 14;
-    push({ wx: xd, cam: xs + 220, view: 0, legs: 'sit', drop: 0.2, soot: true, earA: -0.4, tf: -0.3, face: 'dazed', stars: true,
-      bx: run ? B_STOP - (k - 14) * 150 : B_STOP, by: GROUND + 55, bmode: run ? 'run' : 'stand', bdir: -1, blook: !run });
-  }
+  P(24, 34, k => ({ wx: xd, cam: xs + 220, view: 0, legs: 'sit', drop: 0.2, soot: true, earA: -0.4, tf: -0.3, face: 'dazed', stars: true,
+    bx: xd - 1100 + k * 85, by: GROUND + 55, bmode: k >= 6 ? 'run' : 'hide', bdir: 1 }));
 })();
 
 // Плавные промежуточные позы между ключевыми кадрами.
-const NUM = ['wx', 'cam', 'view', 'pitch', 'roll', 'bob', 'earA', 'tf', 'tailWave', 'drop', 'flame', 'bx', 'by'];
+const NUM = ['wx', 'cam', 'view', 'pitch', 'roll', 'bob', 'lift', 'earA', 'tf', 'tailWave', 'drop', 'flame', 'bx', 'by'];
 const lerp = (a, b, f) => a + (b - a) * f;
 function stateAt(t) {
   t = Math.max(0, Math.min(TL.length - 1, t));
@@ -833,16 +902,16 @@ const sx = X => viewW / 2 + X - camEff;
 function drawEffectsBack(t) {
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   // пылевой хвост за роликами
-  for (let b = T_LAUNCH; b < T_IMPACT; b++) {
+  for (let b = T_LAUNCH + 6; b < T_BOOM - 10; b++) {
     const age = t - b;
     if (age < 0 || age > 7) continue;
     const st = TL[b], r = rng(hash(55, b));
     puff(sx(st.wx - 0.18 * S_W - age * 10), GROUND - 6 - age * 3, 10 + age * 4 + r() * 6, 0.6 * (1 - age / 7), true);
   }
   // пыль птицы
-  for (let b = T_CHASE; b < TL.length; b++) {
+  for (let b = 0; b < TL.length; b++) {
     const st = TL[b];
-    if (st.bmode !== 'run' && st.bmode !== 'skid') continue;
+    if (st.bmode !== 'run') continue;
     const age = t - b;
     if (age < 0 || age > 6) continue;
     puff(sx(st.bx - st.bdir * 30), st.by - 6 - age * 2, 8 + age * 3, 0.5 * (1 - age / 6), true);
@@ -851,32 +920,51 @@ function drawEffectsBack(t) {
 
 function drawEffectsFront(t, st) {
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  // облако на старте
+  // облако на взлёте
   for (let b = T_LAUNCH; b < T_LAUNCH + 6; b++) {
     const age = t - b;
-    if (age < 0 || age > 14) continue;
+    if (age < 0 || age > 16) continue;
     const r = rng(hash(66, b));
-    for (let k = 0; k < 4; k++) puff(sx(X_LAUNCH - 60 - r() * 120 - age * 4), GROUND - 10 - r() * 60 - age * 3, (24 + r() * 26) * (1 + age * 0.08), 0.85 * (1 - age / 14), true);
+    for (let k = 0; k < 4; k++) puff(sx(X_LAUNCH - 40 - r() * 140 - age * 4), GROUND - 10 - r() * 70 - age * 3, (26 + r() * 28) * (1 + age * 0.08), 0.85 * (1 - age / 16), true);
   }
   // дым при поломке
-  for (let b = T_MALF; b < T_IMPACT; b += 1) {
+  for (let b = PANELS[18]; b < PANELS[20] + 2; b++) {
     const age = t - b;
     if (age < 0 || age > 10) continue;
     const s0 = TL[b], r = rng(hash(77, b));
     puff(sx(s0.wx - 0.25 * S_W - r() * 30), GROUND - 30 - age * 7 - r() * 20, 12 + age * 4, 0.7 * (1 - age / 10), false);
   }
-  // взрыв и обломки
-  const ai = t - T_IMPACT;
-  if (ai >= 0 && ai < 9) {
-    burst(sx(X_W - 20), GROUND - 0.35 * S_W, S_W * (0.25 + Math.min(1, ai / 2) * 0.55), ai < 5 ? 1 : 1 - (ai - 5) / 4);
+  // хлопки у роликов
+  for (let b = PANELS[19]; b < PANELS[20]; b += 3) {
+    const age = t - b;
+    if (age < 0 || age > 3) continue;
+    burst(sx(TL[b].wx - 0.05 * S_W), GROUND - 0.03 * S_W, S_W * 0.1 * (0.5 + age * 0.3), 1 - age / 3);
+  }
+  // удар: малый всполох на 21-й панели, большой взрыв на 22-й
+  const a21 = t - (PANELS[20] + 2);
+  if (a21 >= 0 && t < T_BOOM) burst(sx(X_W - 20), GROUND - 0.35 * S_W, S_W * (0.15 + a21 * 0.06), 1);
+  const ai = t - T_BOOM;
+  if (ai >= 0 && ai < 12) burst(sx(X_W - 20), GROUND - 0.35 * S_W, S_W * (0.35 + Math.min(1, ai / 2) * 0.5), ai < 7 ? 1 : 1 - (ai - 7) / 5);
+  // обломки на «ХРЯСЬ!»
+  const ac = t - T_CRASH;
+  if (ac >= 0 && ac < 12) {
     const r = rng(1234);
-    for (let k = 0; k < 12; k++) {
-      const vx = -(4 + r() * 12), vy = -(10 + r() * 14), x = X_W - 10 + vx * ai * 3, y = GROUND - 0.3 * S_W + vy * ai * 3 + 4 * ai * ai * 3;
+    for (let k = 0; k < 14; k++) {
+      const vx = -(4 + r() * 12), vy = -(10 + r() * 14), x = X_W - 10 + vx * ac * 3, y = Math.min(GROUND + 8, GROUND - 0.3 * S_W + vy * ac * 3 + 12 * ac * ac);
       const s = 5 + r() * 8;
       poly(ctx, [[sx(x) - s, y], [sx(x), y - s], [sx(x) + s, y + s * 0.3], [sx(x) - s * 0.2, y + s]]);
       ctx.fillStyle = k % 2 ? '#c95a3b' : '#8c2d2d'; ctx.fill(); ctx.lineWidth = 1.2; ctx.strokeStyle = LINE; ctx.stroke();
     }
-    for (let k = 0; k < 3; k++) puff(sx(X_W - 40 - k * 50 - ai * 6), GROUND - 40 - k * 40 - ai * 5, 30 + ai * 6, 0.8 * (1 - ai / 9), false);
+    for (let k = 0; k < 3; k++) puff(sx(X_W - 40 - k * 50 - ac * 6), GROUND - 40 - k * 40 - ac * 5, 30 + ac * 6, 0.8 * (1 - ac / 12), false);
+  }
+  // облако пыли вокруг сидящего волка
+  const ao = t - T_OW;
+  if (ao >= 0) {
+    const r = rng(4321);
+    for (let k = 0; k < 7; k++) {
+      const a = k / 7 * Math.PI + Math.PI, d = S_W * (0.32 + r() * 0.1);
+      puff(sx(st.wx) + Math.cos(a) * d, GROUND - 0.12 * S_W + Math.sin(a) * d * 0.3 + 0.12 * S_W, S_W * (0.07 + r() * 0.05), Math.max(0, 0.75 - ao * 0.02), true);
+    }
   }
   // звёзды над головой
   if (st.stars) {
@@ -886,16 +974,17 @@ function drawEffectsFront(t, st) {
       star(hx + Math.cos(a) * S_W * 0.2, hy + Math.sin(a) * S_W * 0.05, S_W * 0.035, a, '#ffd84a');
     }
   }
-  // надписи
+  // звукоподражания
   const texts = [
-    [T_LAUNCH, 14, 'ВЖУХ!', () => [sx(X_LAUNCH - 60), 380], 58, -0.12, '#ffd84a'],
-    [T_CHASE + 40, 12, 'Пи-пи!', () => [sx(st.bx) + 10, GROUND - 190], 40, 0.08, '#ffffff'],
-    [T_IMPACT, 14, 'БА-БАХ!', () => [sx(X_W - 120), 330], 92, -0.1, '#ffd84a'],
-    [T_IMPACT + 6, 16, 'ХРЯСЬ!', () => [sx(X_W - 320), 180], 78, 0.12, '#ff6a3a'],
-    [T_DAZE, 20, 'ОЙ!', () => [sx(st.wx) - 120, GROUND - 0.95 * S_W], 64, -0.15, '#ff6a3a'],
-    [T_DAZE + 6, 12, 'Пи-пи!', () => [sx(B_STOP), GROUND - 170], 40, 0.1, '#ffffff'],
+    [T_LAUNCH, 14, 'ВЖУХ!', () => [sx(X_LAUNCH + 120), GROUND - 60], 54, -0.12, '#ffd84a'],
+    [PANELS[12], 10, 'ВЖУХ!', () => [sx(st.wx) - 40, GROUND - 0.15 * S_W], 34, -0.1, '#ffd84a'],
+    [PANELS[14], 10, 'ВЖУХ!', () => [sx(st.wx) + 90, GROUND - 0.12 * S_W], 34, -0.08, '#ffd84a'],
+    [PANELS[15], 10, 'ВЖУХ!', () => [sx(st.wx) + 60, GROUND - 0.2 * S_W], 34, -0.12, '#ffd84a'],
+    [T_BOOM, 12, 'БА-БАХ!', () => [sx(X_W - 160), 250], 96, -0.12, '#ffd84a'],
+    [T_CRASH, 14, 'ХРЯСЬ!', () => [sx(X_W - 260), 220], 86, 0.1, '#ff6a3a'],
+    [T_OW, 20, 'ОЙ!', () => [sx(st.wx) - 140, GROUND - 0.95 * S_W], 64, -0.15, '#ff6a3a'],
+    [T_OW + 12, 18, 'Пи-пи!', () => [sx(st.bx) + 40, GROUND - 120], 42, 0.1, '#ffffff'],
   ];
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
   for (const [t0, dur, text, pos, size, rot, fill] of texts) {
     const age = t - t0;
     if (age < 0 || age > dur) continue;
@@ -904,9 +993,24 @@ function drawEffectsFront(t, st) {
   }
 }
 
+// Номер панели и подпись, как на раскадровке.
+function drawPanelInfo(st) {
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.font = '900 30px Impact, "Arial Black", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  blob(ctx, 40, 40, 26, 26, 'rgba(40,25,40,0.6)');
+  ctx.fillStyle = '#fff'; ctx.fillText(String(st.panel), 40, 41);
+  if (st.caption) {
+    ctx.font = '800 26px "Trebuchet MS", system-ui, sans-serif';
+    const w = ctx.measureText(st.caption).width + 36, x = viewW / 2, y = H - 32;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - w / 2, y - 22, w, 44, 12) : ctx.rect(x - w / 2, y - 22, w, 44);
+    ctx.fillStyle = 'rgba(255,248,232,0.92)'; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = LINE; ctx.stroke();
+    ctx.fillStyle = LINE; ctx.fillText(st.caption, x, y + 1);
+  }
+}
+
 // Линии скорости на погоне.
 function drawSpeedLines(t, st) {
-  if (st.flame < 0.9 || t < T_LAUNCH + 4 || t >= T_IMPACT) return;
+  if (st.flame < 0.9 || t < T_LAUNCH + 4 || t >= PANELS[18]) return;
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   const F = Math.floor(t * 2);
   for (let k = 0; k < 9; k++) {
@@ -917,18 +1021,20 @@ function drawSpeedLines(t, st) {
 
 // ---------- Управление анимацией ----------
 let animT = 0, slow = false, paused = false, camEff = 0;
-const STEP = 0.5, END = TL.length - 1, STEPS = END / STEP + 1;
+const END = TL.length - 1;
 const bSlow = document.getElementById('bSlow'), bStep = document.getElementById('bStep');
+const panelAt = t => TL[Math.min(END, Math.floor(t))].panel;
 function syncUi() {
   bSlow.classList.toggle('on', slow);
   bStep.classList.toggle('on', paused);
-  bStep.textContent = paused ? `Кадр ${Math.round(animT / STEP) + 1}/${STEPS}` : 'Кадр';
+  bStep.textContent = paused ? `Кадр ${panelAt(animT)}/24` : 'Кадр';
 }
 document.getElementById('bRestart').addEventListener('click', () => { animT = 0; paused = false; syncUi(); });
 bSlow.addEventListener('click', () => { slow = !slow; paused = false; syncUi(); });
+// «Кадр»: пауза и переход к ключевой позе следующей панели раскадровки.
 bStep.addEventListener('click', () => {
-  const k = Math.round(animT / STEP);
-  animT = Math.min(END, (paused ? k + 1 : k) * STEP);
+  const n = panelAt(animT);
+  animT = paused ? PANELS[Math.min(23, n)] : PANELS[n - 1];
   paused = true; syncUi();
 });
 
@@ -947,20 +1053,22 @@ function render() {
   plantLayer(7, 0.8, 560, 585, 230, 0.5, 34);
   drawRoad();
   drawEffectsBack(t);
-  if (st.crate || t < T_LAUNCH + 20) drawCrate(sx(CRATE_X), GROUND - 2, S_W, st.crate);
+  if (st.crate || t < PANELS[10]) drawCrate(sx(CRATE_X), GROUND - 2, S_W, st.crate);
+  if (st.groundRocket) { ctx.setTransform(scale, 0, 0, scale, 0, 0); drawRocket(ctx, [sx(X_LAUNCH + 120), GROUND - 12], [sx(X_LAUNCH + 200), GROUND - 14], 10, 0, t, 1); }
   drawWall();
   const bird = () => { if (st.bmode !== 'hide') drawBird(sx(st.bx), st.by, B_SIZE, st, t); };
   if (st.by <= GROUND + 1) bird();
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  drawWolf(ctx, sx(st.wx), GROUND, S_W, Object.assign(st, { viewEar: stateAt(t - 1).view, viewTail: stateAt(t - 2).view }));
+  drawWolf(ctx, sx(st.wx), GROUND - st.lift * S_W, S_W, Object.assign(st, { viewEar: stateAt(t - 1).view, viewTail: stateAt(t - 2).view }));
   if (st.by > GROUND + 1) bird();
   drawEffectsFront(t, st);
   plantLayer(8, 1.35, 700, 716, 420, 0.35, 56);
   drawSpeedLines(t, st);
-  if (t - T_IMPACT >= 0 && t - T_IMPACT < 2) {
+  if (t - T_BOOM >= 0 && t - T_BOOM < 2) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = `rgba(255,250,230,${0.7 * (1 - (t - T_IMPACT) / 2)})`; ctx.fillRect(0, 0, cvs.width, cvs.height);
+    ctx.fillStyle = `rgba(255,250,230,${0.7 * (1 - (t - T_BOOM) / 2)})`; ctx.fillRect(0, 0, cvs.width, cvs.height);
   }
+  drawPanelInfo(TL[Math.min(END, Math.floor(t))]);
 }
 
 let last = 0;
