@@ -533,21 +533,25 @@ function drawWolf(c, X0, Y0, S, st) {
     const [fy, fz] = L.foot[i];
     const hip = [s * 0.075, -0.3 + bob, 0], foot = [s * 0.085, fy - 0.03, fz];
     const knee = [s * 0.082, (hip[1] + foot[1]) / 2, (hip[2] + foot[2]) / 2 + L.knee];
-    limb([hip, knee, foot], 0.075, -0.02, WC.fur);
-    limb([[foot[0], foot[1], foot[2] - 0.03], [foot[0], foot[1], foot[2] + 0.08]], 0.07, 0.01, WC.paw);
+    limb([hip, knee, foot], 0.062, -0.02, WC.fur);
+    limb([[foot[0], foot[1], foot[2] - 0.04], [foot[0], foot[1], foot[2] + 0.13]], 0.085, 0.01, WC.paw);
   }
   // Руки.
   for (const [i, s] of [[0, -1], [1, 1]]) {
     const [hy, hz] = L.hand[i];
-    const sh = body([s * 0.15, -0.64, 0.02]), hand = body([s * 0.21, hy, hz]);
+    const sh = body([s * 0.13, -0.66, 0.02]), hand = body([s * 0.19, hy, hz]);
     const el = [(sh[0] + hand[0]) / 2 + s * 0.03, (sh[1] + hand[1]) / 2, (sh[2] + hand[2]) / 2 - 0.04];
     limb([sh, el, hand], 0.055, 0.03, WC.fur);
     const hq = proj(hand);
-    add(hq[2] + 0.031, () => { blob(c, hq[0], hq[1], S * 0.04, S * 0.04, WC.line); blob(c, hq[0], hq[1], S * 0.04 - lw, S * 0.04 - lw, WC.paw); });
+    add(hq[2] + 0.031, () => { blob(c, hq[0], hq[1], S * 0.05, S * 0.047, WC.line); blob(c, hq[0], hq[1], S * 0.05 - lw, S * 0.047 - lw, WC.paw); });
   }
   // Туловище: светлый живот спереди, тёмная полоса на спине.
-  ell([0, -0.47, 0], [0.16, 0.21, 0.13], 0, WC.fur, () => {
-    decal([0, -0.42, 0.12], [0, 0, 1], [0.1, 0.15], (x, y, rx, ry) => blob(c, x, y, rx, ry, WC.cream));
+  ell([0, -0.5, 0], [0.14, 0.2, 0.12], 0, WC.fur, () => {
+    decal([0, -0.45, 0.11], [0, 0, 1], [0.085, 0.14], (x, y, rx, ry) => blob(c, x, y, rx, ry, WC.cream));
+    decal([0, -0.64, 0.1], [0, 0.2, 1], [0.09, 0.06], (x, y, rx, ry) => {
+      poly(c, [[x - rx, y - ry], [x + rx, y - ry], [x + rx * 0.6, y + ry * 0.4], [x + rx * 0.3, y], [x, y + ry], [x - rx * 0.3, y], [x - rx * 0.6, y + ry * 0.4]]);
+      c.fillStyle = WC.cream; c.fill(); c.lineWidth = lw * 0.8; c.strokeStyle = WC.line; c.stroke();
+    });
     decal([0, -0.5, -0.12], [0, 0, -1], [0.07, 0.19], (x, y, rx, ry) => blob(c, x, y, rx, ry, WC.furD));
   });
   // Хвост: пушистая цепочка кружков со светлым кончиком; разворачивается с опозданием (viewTail).
@@ -560,7 +564,7 @@ function drawWolf(c, X0, Y0, S, st) {
       const v = rot(body2(p), tht - th);
       pts.push([base[0] + v[0], base[1] + v[1], base[2] + v[2]]);
     }
-    const q = pts.map(pp => proj(pp)), rs = [0.04, 0.065, 0.075, 0.06];
+    const q = pts.map(pp => proj(pp)), rs = [0.05, 0.085, 0.095, 0.075];
     const circles = [];
     for (let k = 0; k < 3; k++) for (let t = 0; t < 1; t += 0.25) {
       const a = q[k], b = q[k + 1];
@@ -574,11 +578,11 @@ function drawWolf(c, X0, Y0, S, st) {
   }
   // Уши: треугольники на макушке; разворачиваются с опозданием (viewEar) и отлетают вперёд по инерции.
   for (const s of [-1, 1]) {
-    const a = st.earA || 0, base = body([s * 0.085, -0.95, -0.01]);
-    const v = rot(body2([s * 0.02, -0.17 * Math.cos(a), 0.17 * Math.sin(a)]), the - th);
+    const a = st.earA || 0, base = body([s * 0.095, -0.99, -0.01]);
+    const v = rot(body2([s * 0.03, -0.21 * Math.cos(a), 0.21 * Math.sin(a)]), the - th);
     const b = proj(base), t = proj([base[0] + v[0], base[1] + v[1], base[2] + v[2]]);
     const dx = t[0] - b[0], dy = t[1] - b[1], len = Math.hypot(dx, dy) || 1;
-    const facing = Math.cos(the), hw = 0.05 * S * Math.max(0.35, Math.abs(facing));
+    const facing = Math.cos(the), hw = 0.062 * S * Math.max(0.35, Math.abs(facing));
     const px = -dy / len * hw, py = dx / len * hw;
     add(b[2] + 0.45, () => {
       poly(c, [[b[0] + px, b[1] + py], [t[0], t[1]], [b[0] - px, b[1] - py]]);
@@ -589,34 +593,85 @@ function drawWolf(c, X0, Y0, S, st) {
       }
     });
   }
-  // Голова, щёки, морда, нос, глаза.
+  // Голова: большая, с длинной мордой, лохматыми щеками, крупными глазами и мимикой.
+  const FACE = {
+    grin: { lid: 0.32, tilt: 0.3, brow: -0.05, browTilt: 0.45, pupil: 0.5, eye: 1 },
+    shock: { lid: 0, tilt: 0, brow: -0.6, browTilt: -0.25, pupil: 0.26, eye: 1.25 },
+    smug: { lid: 0.5, tilt: -0.12, brow: -0.15, browTilt: 0.1, pupil: 0.55, eye: 1, raise: -1 },
+    neutral: { lid: 0.14, tilt: 0, brow: -0.2, browTilt: 0, pupil: 0.5, eye: 1 },
+  }[st.face || 'neutral'];
   for (const s of [-1, 1]) {
-    const q = proj(body([s * 0.14, -0.78, 0.01]));
+    const q = proj(body([s * 0.165, -0.8, 0.0]));
+    const k = Math.max(0.35, Math.abs(Math.cos(th))), x0 = q[0], y0 = q[1];
     add(q[2] * 0.1 + 0.49, () => {
-      poly(c, [[q[0] - s * S * 0.02, q[1] - S * 0.035], [q[0] + s * S * 0.04 * Math.abs(Math.cos(th)) + s * S * 0.015, q[1] + S * 0.015], [q[0] - S * 0.01 * s, q[1] + S * 0.04]]);
-      c.fillStyle = WC.cream; c.fill(); c.lineWidth = lw; c.strokeStyle = WC.line; c.stroke();
+      poly(c, [[x0 - s * S * 0.03, y0 - S * 0.06], [x0 + s * S * (0.06 * k + 0.02), y0 - S * 0.025], [x0 + s * S * 0.01, y0 + S * 0.0],
+        [x0 + s * S * (0.055 * k + 0.02), y0 + S * 0.035], [x0 - s * S * 0.02, y0 + S * 0.06]]);
+      c.fillStyle = WC.fur; c.fill(); c.lineWidth = lw; c.lineJoin = 'round'; c.strokeStyle = WC.line; c.stroke();
     });
   }
-  ell([0, -0.83, 0], [0.165, 0.15, 0.15], 0.5, WC.fur, () => {
+  ell([0, -0.86, 0], [0.18, 0.16, 0.16], 0.5, WC.fur, () => {
     for (const s of [-1, 1]) {
-      decal([s * 0.062, -0.875, 0.125], [s * 0.35, 0, 0.94], [0.036, 0.047], (x, y, rx, ry) => {
-        blob(c, x, y, rx, ry, '#ffffff');
-        c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, TAU); c.lineWidth = lw * 0.8; c.strokeStyle = WC.line; c.stroke();
-        blob(c, x + Math.sin(th) * rx * 0.5, y + ry * 0.15, Math.min(rx, ry) * 0.55, ry * 0.5, WC.line);
-        c.beginPath(); c.moveTo(x - rx * 1.1, y - ry * 1.25 - s * ry * 0.15); c.lineTo(x + rx * 1.1, y - ry * 1.25 + s * ry * 0.15);
-        c.lineWidth = lw * 1.4; c.stroke();
+      decal([s * 0.07, -0.925, 0.135], [s * 0.4, -0.15, 0.9], [0.05 * FACE.eye, 0.064 * FACE.eye], (x, y, rx, ry) => {
+        const eye = () => { c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, TAU); };
+        eye(); c.fillStyle = '#ffffff'; c.fill();
+        const pr = Math.min(rx, ry) * FACE.pupil;
+        blob(c, x + Math.sin(th) * rx * 0.45, y + ry * 0.12, pr, pr * 1.25, WC.line);
+        blob(c, x + Math.sin(th) * rx * 0.45 - pr * 0.35, y + ry * 0.12 - pr * 0.45, pr * 0.3, pr * 0.3, '#ffffff');
+        if (FACE.lid > 0) {
+          const base = y - ry + 2 * ry * FACE.lid, yi = base + FACE.tilt * ry, yo = base - FACE.tilt * ry;
+          c.save(); eye(); c.clip();
+          poly(c, [[x - s * rx * 1.2, y - ry * 1.5], [x + s * rx * 1.2, y - ry * 1.5], [x + s * rx * 1.2, yo], [x - s * rx * 1.2, yi]]);
+          c.fillStyle = WC.furD; c.fill();
+          c.beginPath(); c.moveTo(x - s * rx * 1.2, yi); c.lineTo(x + s * rx * 1.2, yo);
+          c.lineWidth = lw * 1.2; c.strokeStyle = WC.line; c.stroke();
+          c.restore();
+        }
+        eye(); c.lineWidth = lw; c.strokeStyle = WC.line; c.stroke();
+        const raise = FACE.raise === s ? -0.15 : 0, by = y - ry * 1.25 + (FACE.brow + raise) * ry;
+        c.beginPath();
+        c.moveTo(x - s * rx * 1.15, by + FACE.browTilt * ry * 0.7);
+        c.quadraticCurveTo(x, by - ry * 0.3, x + s * rx * 1.2, by - FACE.browTilt * ry * 0.7);
+        c.lineWidth = lw * 2.6; c.lineCap = 'round'; c.strokeStyle = WC.line; c.stroke();
       });
     }
   });
-  ell([0, -0.78, 0.14], [0.085, 0.065, 0.11], 0.5, WC.cream, () => {
-    decal([0, -0.745, 0.24], [0, 0.3, 0.95], [0.04, 0.012], (x, y, rx) => {
-      c.beginPath(); c.moveTo(x - rx, y); c.quadraticCurveTo(x, y + S * 0.018, x + rx, y);
-      c.lineWidth = lw; c.strokeStyle = WC.line; c.stroke();
+  ell([0, -0.8, 0.17], [0.095, 0.064, 0.165], 0.5, WC.cream, () => {
+    decal([0, -0.772, 0.3], [0, 0.25, 0.97], [0.08, 0.045], (x, y, rx, ry) => {
+      c.lineWidth = lw * 1.3; c.strokeStyle = WC.line; c.lineCap = 'round'; c.lineJoin = 'round';
+      if (st.face === 'grin') {
+        c.beginPath(); c.moveTo(x - rx, y - ry * 0.3);
+        c.quadraticCurveTo(x, y + ry * 1.9, x + rx, y - ry * 0.3);
+        c.quadraticCurveTo(x, y + ry * 0.5, x - rx, y - ry * 0.3); c.closePath();
+        c.fillStyle = '#5a1f2a'; c.fill();
+        c.save(); c.clip();
+        c.fillStyle = '#ffffff'; c.fillRect(x - rx, y - ry * 0.4, rx * 2, ry * 0.85);
+        c.beginPath();
+        for (let k = -2; k <= 2; k++) { c.moveTo(x + k * rx * 0.3, y - ry * 0.4); c.lineTo(x + k * rx * 0.3, y + ry * 0.45); }
+        c.lineWidth = lw * 0.6; c.stroke(); c.restore();
+        c.lineWidth = lw * 1.3; c.beginPath(); c.moveTo(x - rx, y - ry * 0.3);
+        c.quadraticCurveTo(x, y + ry * 1.9, x + rx, y - ry * 0.3);
+        c.quadraticCurveTo(x, y + ry * 0.5, x - rx, y - ry * 0.3); c.stroke();
+      } else if (st.face === 'shock') {
+        c.beginPath(); c.ellipse(x, y + ry * 0.7, rx * 0.5, ry * 1.4, 0, 0, TAU);
+        c.fillStyle = '#5a1f2a'; c.fill();
+        blob(c, x, y + ry * 1.5, rx * 0.35, ry * 0.5, '#e07a86');
+        c.beginPath(); c.ellipse(x, y + ry * 0.7, rx * 0.5, ry * 1.4, 0, 0, TAU); c.stroke();
+      } else if (st.face === 'smug') {
+        c.beginPath(); c.moveTo(x - rx * 0.85, y + ry * 0.1);
+        c.quadraticCurveTo(x + rx * 0.1, y + ry * 1.1, x + rx, y - ry * 0.7); c.stroke();
+        poly(c, [[x + rx * 0.45, y + ry * 0.35], [x + rx * 0.6, y + ry * 0.95], [x + rx * 0.72, y + ry * 0.15]]);
+        c.fillStyle = '#ffffff'; c.fill(); c.lineWidth = lw * 0.8; c.stroke();
+      } else {
+        c.beginPath(); c.moveTo(x - rx * 0.6, y + ry * 0.2); c.quadraticCurveTo(x, y + ry * 0.7, x + rx * 0.6, y + ry * 0.2); c.stroke();
+      }
     });
   });
   {
-    const q = proj(body([0, -0.805, 0.25]));
-    add(q[2] + 0.52, () => blob(c, q[0], q[1], S * 0.032, S * 0.025, WC.nose));
+    const q = proj(body([0, -0.84, 0.33]));
+    add(q[2] + 0.52, () => {
+      blob(c, q[0], q[1], S * 0.042, S * 0.032, WC.nose);
+      blob(c, q[0] - S * 0.012, q[1] - S * 0.01, S * 0.012, S * 0.008, 'rgba(255,255,255,0.6)');
+    });
   }
 
   P.sort((a, b) => a.d - b.d);
@@ -627,7 +682,7 @@ function drawWolf(c, X0, Y0, S, st) {
 }
 
 // ---------- Раскадровка, 12 кадров в секунду ----------
-const Z_START = 13.5, Z_BRAKE = 1.95, Z_STOP = 1.35, LANE = 0.15, WOLF_H = 340;
+const Z_START = 13.5, Z_BRAKE = 1.95, Z_STOP = 1.35, LANE = 0.15, WOLF_H = 470;
 const wolfX = z => viewW / 2 + roadC(z) - cam / z + LANE * roadHW(z);
 
 // Ракурс на бегу по изгибу дороги: анфас или 3/4 влево/вправо, с запасом от дрожания.
@@ -649,7 +704,7 @@ let BRAKE_AT = 0, STOP_AT = 0;
       const want = Math.abs(h) > 24 ? (h > 0 ? 45 : -45) : Math.abs(h) < 12 ? 0 : view;
       if (want !== view) { view = want; held = 0; }
     }
-    return { z, view, legs: 'run' + (i % 4), bob: i % 2 ? -0.03 : 0, pitch: -0.12, earA: -0.3, tf: -0.3, tailWave: i % 2 ? 1 : -1 };
+    return { z, view, legs: 'run' + (i % 4), bob: i % 2 ? -0.03 : 0, pitch: -0.12, earA: -0.3, tf: -0.3, tailWave: i % 2 ? 1 : -1, face: 'grin' };
   });
   BRAKE_AT = TL.length;
   const bview = view || -45;
@@ -657,15 +712,15 @@ let BRAKE_AT = 0, STOP_AT = 0;
   const earB = [0.4, 0.9, 1.1, 1.15, 1.15, 1.15, 1.15, 1.15], tfB = [0, 0.5, 0.9, 1, 1, 1, 1, 1];
   add(8, i => {
     const t = (i + 1) / 8, e = 1 - (1 - t) * (1 - t);
-    return { z: Z_BRAKE + (Z_STOP - Z_BRAKE) * e, view: bview, legs: 'brake', pitch: 0.35, earA: earB[i], tf: tfB[i] };
+    return { z: Z_BRAKE + (Z_STOP - Z_BRAKE) * e, view: bview, legs: 'brake', pitch: 0.35, earA: earB[i], tf: tfB[i], face: 'shock' };
   });
   STOP_AT = TL.length;
   // Остановка: уши и хвост догоняют, перелетают и успокаиваются.
   const settle = [[1.25, 1.15, 0.22], [0.7, 0.6, 0.1], [-0.35, -0.45, 0], [-0.2, -0.25, 0], [0.1, 0.08, 0], [0, 0, 0]];
-  for (const [earA, tf, pitch] of settle) TL.push({ z: Z_STOP, view: bview, legs: pitch > 0.05 ? 'brake' : 'stand', pitch, earA, tf });
+  settle.forEach(([earA, tf, pitch], i) => TL.push({ z: Z_STOP, view: bview, legs: pitch > 0.05 ? 'brake' : 'stand', pitch, earA, tf, face: i < 3 ? 'shock' : 'neutral' }));
   const hold = (view, n, extra) => add(n, () => Object.assign({ z: Z_STOP, view, legs: 'stand', pitch: 0, earA: 0, tf: 0 }, extra));
   // Замирает и смотрит в камеру, пауза.
-  hold(0, 16);
+  hold(0, 16, { face: 'smug' });
   // Поворот спиной: предвкушение (наклон в обратную сторону), затем ракурсы листа, пауза.
   hold(-20, 3, { roll: -0.06 });
   hold(45, 2); hold(90, 3); hold(135, 2); hold(180, 2);
@@ -673,7 +728,7 @@ let BRAKE_AT = 0, STOP_AT = 0;
   // Обратно к камере.
   hold(200, 3, { roll: 0.06 });
   hold(135, 2); hold(90, 3); hold(45, 2); hold(0, 2);
-  hold(0, 24);
+  hold(0, 24, { face: 'smug' });
 })();
 
 // Борозды от лап на асфальте.
