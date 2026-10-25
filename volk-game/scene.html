@@ -12,10 +12,16 @@
     touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; cursor: grab; }
   canvas:active { cursor: grabbing; }
+  #ui { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); z-index: 3;
+    display: flex; gap: 6px; }
+  #ui button { font: 600 12px/1 system-ui, sans-serif; color: #fff; background: rgba(40,25,40,0.55); border: 1px solid rgba(255,255,255,0.35);
+    border-radius: 7px; padding: 6px 9px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  #ui button.on { background: rgba(200,90,50,0.85); }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="ui"><button id="bRestart">Заново</button><button id="bSlow">Медленно</button><button id="bStep">Кадр</button></div>
 <script>
 'use strict';
 
@@ -454,6 +460,291 @@ function drawFront() {
   }
 }
 
+// ---------- Волк ----------
+// Волк — плоская мультяшная кукла, которая поворачивается вокруг вертикальной оси.
+// Все ракурсы листа (анфас, 3/4, профиль, 3/4 сзади, спина) получаются из одной модели.
+// Координаты: рост ≈ 1, ноги на y = 0, вверх — минус, z — к зрителю, x — вправо при анфасе.
+const D2R = Math.PI / 180;
+const WC = { fur: '#7d8499', furD: '#5d6377', cream: '#f1e4c8', line: '#2b2836', nose: '#26222c', pink: '#dc9c9c', paw: '#585d70' };
+
+// Позы ног и рук: для каждой стороны (левая, правая) — стопа [y, z], кисть [y, z].
+const LEGS = {
+  run0: { foot: [[0, 0.14], [-0.1, -0.16]], hand: [[-0.42, -0.13], [-0.5, 0.14]], knee: 0.07 },
+  run1: { foot: [[0, 0], [-0.16, 0.06]], hand: [[-0.45, 0.01], [-0.45, 0.02]], knee: 0.07 },
+  run2: { foot: [[-0.1, -0.16], [0, 0.14]], hand: [[-0.5, 0.14], [-0.42, -0.13]], knee: 0.07 },
+  run3: { foot: [[-0.16, 0.06], [0, 0]], hand: [[-0.45, 0.02], [-0.45, 0.01]], knee: 0.07 },
+  brake: { foot: [[0, 0.2], [0, 0.11]], hand: [[-0.78, -0.12], [-0.74, -0.1]], knee: 0.13 },
+  stand: { foot: [[0, 0.02], [0, 0.02]], hand: [[-0.37, 0.03], [-0.37, 0.03]], knee: 0.01 },
+};
+// Хвост: углы трёх звеньев в плоскости y–z (0 — назад, π/2 — вверх). tf > 0 — заброшен вперёд.
+const TAIL_REST = [0.35, 0.65, 0.95], TAIL_FWD = [1.1, 1.4, 1.6];
+
+function drawWolf(c, X0, Y0, S, st) {
+  const th = st.view * D2R, the = st.viewEar * D2R, tht = st.viewTail * D2R;
+  const L = LEGS[st.legs], bob = st.bob || 0, pitch = st.pitch || 0, lw = Math.max(0.8, S * 0.012);
+  const cp = Math.cos(pitch), sp = Math.sin(pitch);
+  // Корпус наклоняется вокруг таза; всё выше таза ещё и подпрыгивает при беге.
+  const body = p => {
+    let [x, y, z] = p;
+    if (y < -0.3) { y += bob; const dy = y + 0.3; y = -0.3 + dy * cp - z * sp; z = z * cp + dy * sp; }
+    return [x, y, z];
+  };
+  const rot = (v, a) => [v[0] * Math.cos(a) + v[2] * Math.sin(a), v[1], -v[0] * Math.sin(a) + v[2] * Math.cos(a)];
+  const proj = (p, a = th) => { const q = rot(p, a); return [X0 + q[0] * S, Y0 + q[1] * S, q[2]]; };
+  const P = [];
+  const add = (d, fn) => P.push({ d, fn });
+
+  const ellPath = (e) => { c.beginPath(); c.ellipse(e.x, e.y, e.hw, e.hh, 0, 0, TAU); };
+  const ell = (center, r, bias, fill, decals) => {
+    const q = proj(body(center)), ct = Math.cos(th), st2 = Math.sin(th);
+    const e = { x: q[0], y: q[1], hw: S * Math.hypot(r[0] * ct, r[2] * st2), hh: S * r[1] };
+    add(q[2] + bias, () => {
+      ellPath(e); c.fillStyle = fill; c.fill();
+      if (decals) { c.save(); ellPath(e); c.clip(); decals(e); c.restore(); }
+      ellPath(e); c.lineWidth = lw; c.strokeStyle = WC.line; c.stroke();
+    });
+    return e;
+  };
+  // Нашивка на поверхности (глаз, живот, полоса на спине) — видна, только если смотрит на зрителя.
+  const decal = (center, normal, r, draw) => {
+    const n = rot(body2(normal), th);
+    if (n[2] < 0.08) return;
+    const q = proj(body(center));
+    draw(q[0], q[1], r[0] * S * n[2], r[1] * S, n);
+  };
+  const body2 = v => [v[0], v[1] * cp - v[2] * sp, v[2] * cp + v[1] * sp];
+  const limb = (pts, w, bias, fill) => {
+    const q = pts.map(p => proj(p));
+    const d = q.reduce((s, p) => s + p[2], 0) / q.length;
+    add(d + bias, () => {
+      c.lineCap = 'round'; c.lineJoin = 'round';
+      for (const [col, ww] of [[WC.line, w * S + lw * 2], [fill, w * S]]) {
+        c.beginPath(); q.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1]));
+        c.strokeStyle = col; c.lineWidth = ww; c.stroke();
+      }
+    });
+  };
+
+  // Тень на земле.
+  blob(c, X0, Y0 + S * 0.01, S * 0.24, S * 0.045, 'rgba(70,30,45,0.3)');
+
+  // Ноги и стопы.
+  for (const [i, s] of [[0, -1], [1, 1]]) {
+    const [fy, fz] = L.foot[i];
+    const hip = [s * 0.075, -0.3 + bob, 0], foot = [s * 0.085, fy - 0.03, fz];
+    const knee = [s * 0.082, (hip[1] + foot[1]) / 2, (hip[2] + foot[2]) / 2 + L.knee];
+    limb([hip, knee, foot], 0.075, -0.02, WC.fur);
+    limb([[foot[0], foot[1], foot[2] - 0.03], [foot[0], foot[1], foot[2] + 0.08]], 0.07, 0.01, WC.paw);
+  }
+  // Руки.
+  for (const [i, s] of [[0, -1], [1, 1]]) {
+    const [hy, hz] = L.hand[i];
+    const sh = body([s * 0.15, -0.64, 0.02]), hand = body([s * 0.21, hy, hz]);
+    const el = [(sh[0] + hand[0]) / 2 + s * 0.03, (sh[1] + hand[1]) / 2, (sh[2] + hand[2]) / 2 - 0.04];
+    limb([sh, el, hand], 0.055, 0.03, WC.fur);
+    const hq = proj(hand);
+    add(hq[2] + 0.031, () => { blob(c, hq[0], hq[1], S * 0.04, S * 0.04, WC.line); blob(c, hq[0], hq[1], S * 0.04 - lw, S * 0.04 - lw, WC.paw); });
+  }
+  // Туловище: светлый живот спереди, тёмная полоса на спине.
+  ell([0, -0.47, 0], [0.16, 0.21, 0.13], 0, WC.fur, () => {
+    decal([0, -0.42, 0.12], [0, 0, 1], [0.1, 0.15], (x, y, rx, ry) => blob(c, x, y, rx, ry, WC.cream));
+    decal([0, -0.5, -0.12], [0, 0, -1], [0.07, 0.19], (x, y, rx, ry) => blob(c, x, y, rx, ry, WC.furD));
+  });
+  // Хвост: пушистая цепочка кружков со светлым кончиком; разворачивается с опозданием (viewTail).
+  {
+    const tf = st.tf || 0, base = body([0, -0.3, -0.12]), pts = [base];
+    let p = [0, 0, 0];
+    for (let k = 0; k < 3; k++) {
+      const a = TAIL_REST[k] + TAIL_FWD[k] * tf + (st.tailWave || 0) * (k + 1) * 0.1;
+      p = [p[0] + 0.05 * (k + 1) * 0.6, p[1] - Math.sin(a) * 0.12, p[2] - Math.cos(a) * 0.12];
+      const v = rot(body2(p), tht - th);
+      pts.push([base[0] + v[0], base[1] + v[1], base[2] + v[2]]);
+    }
+    const q = pts.map(pp => proj(pp)), rs = [0.04, 0.065, 0.075, 0.06];
+    const circles = [];
+    for (let k = 0; k < 3; k++) for (let t = 0; t < 1; t += 0.25) {
+      const a = q[k], b = q[k + 1];
+      circles.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, (rs[k] + (rs[k + 1] - rs[k]) * t) * S, k === 2 && t > 0.4]);
+    }
+    circles.push([q[3][0], q[3][1], rs[3] * S, true]);
+    add((q[1][2] + q[2][2]) / 2 - 0.01, () => {
+      for (const [x, y, r] of circles) blob(c, x, y, r + lw, r + lw, WC.line);
+      for (const [x, y, r, tip] of circles) blob(c, x, y, r, r, tip ? WC.cream : WC.fur);
+    });
+  }
+  // Уши: треугольники на макушке; разворачиваются с опозданием (viewEar) и отлетают вперёд по инерции.
+  for (const s of [-1, 1]) {
+    const a = st.earA || 0, base = body([s * 0.085, -0.95, -0.01]);
+    const v = rot(body2([s * 0.02, -0.17 * Math.cos(a), 0.17 * Math.sin(a)]), the - th);
+    const b = proj(base), t = proj([base[0] + v[0], base[1] + v[1], base[2] + v[2]]);
+    const dx = t[0] - b[0], dy = t[1] - b[1], len = Math.hypot(dx, dy) || 1;
+    const facing = Math.cos(the), hw = 0.05 * S * Math.max(0.35, Math.abs(facing));
+    const px = -dy / len * hw, py = dx / len * hw;
+    add(b[2] + 0.45, () => {
+      poly(c, [[b[0] + px, b[1] + py], [t[0], t[1]], [b[0] - px, b[1] - py]]);
+      c.fillStyle = WC.fur; c.fill(); c.lineWidth = lw; c.strokeStyle = WC.line; c.lineJoin = 'round'; c.stroke();
+      if (facing > 0.25) {
+        poly(c, [[b[0] + px * 0.5, b[1] + py * 0.5], [b[0] + dx * 0.75, b[1] + dy * 0.75], [b[0] - px * 0.5, b[1] - py * 0.5]]);
+        c.fillStyle = WC.pink; c.fill();
+      }
+    });
+  }
+  // Голова, щёки, морда, нос, глаза.
+  for (const s of [-1, 1]) {
+    const q = proj(body([s * 0.14, -0.78, 0.01]));
+    add(q[2] * 0.1 + 0.49, () => {
+      poly(c, [[q[0] - s * S * 0.02, q[1] - S * 0.035], [q[0] + s * S * 0.04 * Math.abs(Math.cos(th)) + s * S * 0.015, q[1] + S * 0.015], [q[0] - S * 0.01 * s, q[1] + S * 0.04]]);
+      c.fillStyle = WC.cream; c.fill(); c.lineWidth = lw; c.strokeStyle = WC.line; c.stroke();
+    });
+  }
+  ell([0, -0.83, 0], [0.165, 0.15, 0.15], 0.5, WC.fur, () => {
+    for (const s of [-1, 1]) {
+      decal([s * 0.062, -0.875, 0.125], [s * 0.35, 0, 0.94], [0.036, 0.047], (x, y, rx, ry) => {
+        blob(c, x, y, rx, ry, '#ffffff');
+        c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, TAU); c.lineWidth = lw * 0.8; c.strokeStyle = WC.line; c.stroke();
+        blob(c, x + Math.sin(th) * rx * 0.5, y + ry * 0.15, Math.min(rx, ry) * 0.55, ry * 0.5, WC.line);
+        c.beginPath(); c.moveTo(x - rx * 1.1, y - ry * 1.25 - s * ry * 0.15); c.lineTo(x + rx * 1.1, y - ry * 1.25 + s * ry * 0.15);
+        c.lineWidth = lw * 1.4; c.stroke();
+      });
+    }
+  });
+  ell([0, -0.78, 0.14], [0.085, 0.065, 0.11], 0.5, WC.cream, () => {
+    decal([0, -0.745, 0.24], [0, 0.3, 0.95], [0.04, 0.012], (x, y, rx) => {
+      c.beginPath(); c.moveTo(x - rx, y); c.quadraticCurveTo(x, y + S * 0.018, x + rx, y);
+      c.lineWidth = lw; c.strokeStyle = WC.line; c.stroke();
+    });
+  });
+  {
+    const q = proj(body([0, -0.805, 0.25]));
+    add(q[2] + 0.52, () => blob(c, q[0], q[1], S * 0.032, S * 0.025, WC.nose));
+  }
+
+  P.sort((a, b) => a.d - b.d);
+  c.save();
+  if (st.roll) { c.translate(X0, Y0); c.rotate(st.roll); c.translate(-X0, -Y0); }
+  for (const p of P) p.fn();
+  c.restore();
+}
+
+// ---------- Раскадровка, 12 кадров в секунду ----------
+const Z_START = 13.5, Z_BRAKE = 1.95, Z_STOP = 1.35, LANE = 0.15, WOLF_H = 340;
+const wolfX = z => viewW / 2 + roadC(z) - cam / z + LANE * roadHW(z);
+
+// Ракурс на бегу по изгибу дороги: анфас или 3/4 влево/вправо, с запасом от дрожания.
+function headingAt(z) {
+  const X = zz => roadC(zz) * zz / 300, d = 0.05;
+  return Math.atan2(X(z - d) - X(z), d) / D2R;
+}
+
+const TL = [];
+let BRAKE_AT = 0, STOP_AT = 0;
+(function buildTimeline() {
+  const add = (n, f) => { for (let i = 0; i < n; i++) TL.push(f(i, n)); };
+  let view = 0, held = 0;
+  const RUN = 60;
+  add(RUN, i => {
+    const z = Z_START + (Z_BRAKE - Z_START) * i / RUN, h = headingAt(z) * 0.6;
+    held++;
+    if (held >= 4) {
+      const want = Math.abs(h) > 24 ? (h > 0 ? 45 : -45) : Math.abs(h) < 12 ? 0 : view;
+      if (want !== view) { view = want; held = 0; }
+    }
+    return { z, view, legs: 'run' + (i % 4), bob: i % 2 ? -0.03 : 0, pitch: -0.12, earA: -0.3, tf: -0.3, tailWave: i % 2 ? 1 : -1 };
+  });
+  BRAKE_AT = TL.length;
+  const bview = view || -45;
+  // Резкое торможение: скользит, ноги вперёд, корпус назад, уши и хвост летят вперёд.
+  const earB = [0.4, 0.9, 1.1, 1.15, 1.15, 1.15, 1.15, 1.15], tfB = [0, 0.5, 0.9, 1, 1, 1, 1, 1];
+  add(8, i => {
+    const t = (i + 1) / 8, e = 1 - (1 - t) * (1 - t);
+    return { z: Z_BRAKE + (Z_STOP - Z_BRAKE) * e, view: bview, legs: 'brake', pitch: 0.35, earA: earB[i], tf: tfB[i] };
+  });
+  STOP_AT = TL.length;
+  // Остановка: уши и хвост догоняют, перелетают и успокаиваются.
+  const settle = [[1.25, 1.15, 0.22], [0.7, 0.6, 0.1], [-0.35, -0.45, 0], [-0.2, -0.25, 0], [0.1, 0.08, 0], [0, 0, 0]];
+  for (const [earA, tf, pitch] of settle) TL.push({ z: Z_STOP, view: bview, legs: pitch > 0.05 ? 'brake' : 'stand', pitch, earA, tf });
+  const hold = (view, n, extra) => add(n, () => Object.assign({ z: Z_STOP, view, legs: 'stand', pitch: 0, earA: 0, tf: 0 }, extra));
+  // Замирает и смотрит в камеру, пауза.
+  hold(0, 16);
+  // Поворот спиной: предвкушение (наклон в обратную сторону), затем ракурсы листа, пауза.
+  hold(-20, 3, { roll: -0.06 });
+  hold(45, 2); hold(90, 3); hold(135, 2); hold(180, 2);
+  hold(180, 14);
+  // Обратно к камере.
+  hold(200, 3, { roll: 0.06 });
+  hold(135, 2); hold(90, 3); hold(45, 2); hold(0, 2);
+  hold(0, 24);
+})();
+
+// Борозды от лап на асфальте.
+function drawSkids(F) {
+  if (F < BRAKE_AT) return;
+  const zEnd = TL[Math.min(F, STOP_AT)].z, view = TL[BRAKE_AT].view * D2R;
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  for (const s of [-1, 1]) {
+    const pts = [];
+    for (let k = 0; k <= 16; k++) {
+      const z = Z_BRAKE + (zEnd - Z_BRAKE) * k / 16, S = WOLF_H / z;
+      pts.push([wolfX(z) + s * 0.085 * S * Math.cos(view), yAt(z), S]);
+    }
+    for (const [col, k] of [['rgba(45,30,45,0.5)', 0.035], ['rgba(255,225,180,0.35)', 0.012]]) {
+      c2poly(pts.map(p => [p[0] - p[2] * k + (k < 0.02 ? p[2] * 0.03 : 0), p[1]]), pts.map(p => [p[0] + p[2] * k + (k < 0.02 ? p[2] * 0.03 : 0), p[1]]), col);
+    }
+  }
+}
+function c2poly(a, b, col) {
+  ctx.beginPath(); a.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+  for (let i = b.length - 1; i >= 0; i--) ctx.lineTo(b[i][0], b[i][1]);
+  ctx.closePath(); ctx.fillStyle = col; ctx.fill();
+}
+
+// Пыль из-под лап: клубы растут, поднимаются и тают; каждый кадр — новое положение.
+function drawDust(F) {
+  const spawns = [];
+  for (let b = BRAKE_AT; b <= STOP_AT; b++) spawns.push(b);
+  for (const b of spawns) {
+    const age = F - b, life = b === STOP_AT ? 12 : 9;
+    if (age < 0 || age >= life) continue;
+    const z0 = TL[b].z, S = WOLF_H / z0, big = b === STOP_AT ? 1.25 : 1;
+    const r = rng(hash(77, b));
+    for (let k = 0; k < (b === STOP_AT ? 6 : 3); k++) {
+      const side = r() < 0.5 ? -1 : 1, spread = (r() - 0.5) * 0.5 + side * (0.12 + age * 0.03);
+      const x = wolfX(z0) + spread * S, y = yAt(z0) - S * (0.02 + age * 0.018 * (0.6 + r()));
+      const rad = S * big * (0.05 + age * 0.022) * (0.7 + r() * 0.5), a = 0.75 * (1 - age / life);
+      ctx.globalAlpha = a;
+      blob(ctx, x, y, rad + Math.max(1, S * 0.008), rad * 0.8 + Math.max(1, S * 0.008), '#c9955f');
+      blob(ctx, x, y, rad, rad * 0.8, '#f2d4a2');
+      blob(ctx, x - rad * 0.3, y - rad * 0.25, rad * 0.45, rad * 0.35, '#fbe8c6');
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function wolfItem(F, out) {
+  const st = Object.assign({}, TL[F], { viewEar: TL[Math.max(0, F - 1)].view, viewTail: TL[Math.max(0, F - 2)].view });
+  out.push({ z: st.z, draw: () => {
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    drawWolf(ctx, wolfX(st.z), yAt(st.z), WOLF_H / st.z, st);
+    drawDust(F);
+  } });
+}
+
+// ---------- Управление анимацией ----------
+let animT = 0, slow = false, paused = false;
+const animFrame = () => Math.min(TL.length - 1, Math.floor(animT));
+const bSlow = document.getElementById('bSlow'), bStep = document.getElementById('bStep');
+function syncUi() {
+  bSlow.classList.toggle('on', slow);
+  bStep.classList.toggle('on', paused);
+  bStep.textContent = paused ? `Кадр ${animFrame() + 1}/${TL.length}` : 'Кадр';
+}
+document.getElementById('bRestart').addEventListener('click', () => { animT = 0; paused = false; syncUi(); });
+bSlow.addEventListener('click', () => { slow = !slow; paused = false; syncUi(); });
+bStep.addEventListener('click', () => {
+  animT = paused ? Math.min(TL.length - 1, animFrame() + 1) : animFrame();
+  paused = true; syncUi();
+});
+
 // ---------- Кадр ----------
 function render() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -462,9 +753,12 @@ function render() {
   drawRange();
   drawSand();
   drawRoad();
+  const F = animFrame();
+  drawSkids(F);
   const items = [];
   ROWS.forEach((row, ri) => rowItems(row, ri, items));
   frameItem(items);
+  wolfItem(F, items);
   items.sort((a, b) => b.z - a.z);
   for (const it of items) { ctx.setTransform(1, 0, 0, 1, 0, 0); it.draw(); }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -511,6 +805,7 @@ let last = 0;
 function frame(t) {
   const dt = last ? Math.min(0.05, (t - last) / 1000) : 0;
   last = t;
+  if (!paused) { animT = Math.min(TL.length - 1, animT + dt * 12 * (slow ? 0.25 : 1)); }
   if (!drag) {
     if (keyDir) vel = keyDir * 700;
     cam += vel * dt;
