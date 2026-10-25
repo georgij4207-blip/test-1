@@ -69,10 +69,10 @@ const roadHW = z => 250 / z;
 
 // ---------- Палитры скал: свет, полутон, тень, верхняя грань ----------
 const PAL = {
-  near: { lit: '#e98a50', mid: '#c95a3b', shadow: '#8c2d2d', top: '#f3a866' },
-  mid: { lit: '#efae78', mid: '#df905f', shadow: '#bb644f', top: '#f7c78e', haze: 0.12 },
-  far: { lit: '#f2c6a0', mid: '#e8b38e', shadow: '#d29888', top: '#f8dbb8', haze: 0.2 },
-  range: { lit: '#e6cbc8', mid: '#dbbcc2', shadow: '#c4a2b8', top: '#f0ddd2', haze: 0.25 },
+  near: { lit: '#e98a50', mid: '#c95a3b', shadow: '#8c2d2d', top: '#f3a866', line: '#6a1f26' },
+  mid: { lit: '#efae78', mid: '#df905f', shadow: '#bb644f', top: '#f7c78e', haze: 0.12, line: '#a5534a' },
+  far: { lit: '#f2c6a0', mid: '#e8b38e', shadow: '#d29888', top: '#f8dbb8', haze: 0.2, line: '#c48c80' },
+  range: { lit: '#e6cbc8', mid: '#dbbcc2', shadow: '#c4a2b8', top: '#f0ddd2', haze: 0.25, line: '#b597ad' },
 };
 const HAZE = '246,228,200';
 
@@ -173,6 +173,14 @@ function paintRock(c, col, pal, r) {
   poly(c, cap); c.fillStyle = pal.top; c.fill();
   if (pal.haze) { c.fillStyle = `rgba(${HAZE},${pal.haze})`; c.fillRect(l - 20, top - 10, w + 40, h + 40); }
   c.restore();
+  // Чистый векторный контур по силуэту.
+  c.beginPath();
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i], b = pts[(i + 1) % pts.length];
+    if (a[1] >= 11 && b[1] >= 11) continue;
+    c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]);
+  }
+  c.lineWidth = 2; c.lineCap = 'round'; c.strokeStyle = pal.line; c.stroke();
 }
 
 // Спрайт рисуется один раз в отдельный холст и потом только перемещается — без дрожания.
@@ -225,17 +233,28 @@ const ROWS = [
 ];
 const HERO_O = 195;
 const ARCH = { z: 4.6, o: -175, w: 175, h: 165 };   // арка слева от дороги в средней дали
+const FRAME = { z: 1.4, o: -575 };                    // массивная скала-рамка слева, у самой дороги
+
+function frameItem(out) {
+  const z = FRAME.z;
+  out.push({ z, o: FRAME.o, draw: () => drawSprite(sprite('frame', () => {
+    const cols = [chunk(rng(31), 0, 300, 820), chunk(rng(32), -160, 230, 580), chunk(rng(33), 140, 210, 430), chunk(rng(34), -40, 270, 250)];
+    cols.sort((a, b) => a.top - b.top);
+    return { cols, pal: PAL.near, seed: 3131, shadow: castShadow(420, 360) };
+  }), sxGround(FRAME.o, z), yAt(z)) });
+}
 
 function rowItems(row, ri, out) {
   const z = row.z, y = yAt(z), shift = cam / z;
   if (row.kind === 'hero') {
     out.push({ z, draw: () => drawSprite(sprite('hero', () => {
       const r = rng(777), cols = [];
-      cols.push(chunk(rng(11), -40, 170, 215));
-      cols.push(chunk(rng(12), 80, 110, 190));
-      cols.push(chunk(rng(13), -110, 120, 120));
-      cols.push(chunk(rng(14), 30, 100, 105));
-      cols.push(chunk(rng(15), 125, 110, 85));
+      cols.push(chunk(rng(11), -40, 170, 290));
+      cols.push(chunk(rng(12), 85, 100, 265));
+      cols.push(chunk(rng(16), -170, 80, 215));
+      cols.push(chunk(rng(13), -110, 130, 160));
+      cols.push(chunk(rng(14), 30, 110, 130));
+      cols.push(chunk(rng(15), 140, 120, 110, true));
       cols.sort((a, b) => a.top - b.top);
       return { cols, pal: PAL.far, seed: r() * 1e9 | 0 };
     }), sxGround(HERO_O, z), y) });
@@ -258,18 +277,37 @@ function rowItems(row, ri, out) {
       const seed = r() * 1e9 | 0;
       out.push({ z, o, draw: () => drawSprite(sprite(`${ri}:${i}`, () => {
         const rr = rng(seed), set = row.pal === 'near' ? 'near' : row.pal;
-        return { cols: rockShape(rr, pickType(rng(hash(seed, 1)), TYPES[set]), w, h, set), pal: PAL[row.pal], seed: rr() * 1e9 | 0, shadow: row.shadow ? castShadow(w, h * 0.35) : null };
+        return { cols: rockShape(rr, pickType(rng(hash(seed, 1)), TYPES[set]), w, h, set), pal: PAL[row.pal], seed: rr() * 1e9 | 0, shadow: row.shadow ? castShadow(w, h * 0.5) : null };
       }), sxGround(o, z), y) });
     } else {
       const s = (z < 1.5 ? 1.5 : 1) * (0.7 + r() * 0.6) * 38 / z;
       if (Math.abs(o - roadC(z)) < roadHW(z) * 1.1 + s * 1.5) continue;
-      const seed = r() * 1e9 | 0, stone = r() < 0.35;
-      out.push({ z, o, draw: () => (stone ? drawStone : drawBush)(ctx, sxGround(o, z), y, s, rng(seed)) });
+      const seed = r() * 1e9 | 0, t = r(), fn = t < 0.3 ? drawStone : t < 0.58 ? drawCactus : drawBush;
+      out.push({ z, o, draw: () => fn(ctx, sxGround(o, z), y, s, rng(seed)) });
     }
   }
 }
 
-// ---------- Кусты и камни (рисуются напрямую, в единицах экрана) ----------
+// ---------- Кусты, кактусы и камни (рисуются напрямую, в единицах экрана) ----------
+function drawCactus(c, x, y, s, r) {
+  c.setTransform(scale, 0, 0, scale, 0, 0);
+  blob(c, x - s * 0.45, y + s * 0.06, s * 0.8, s * 0.18, 'rgba(150,70,60,0.25)');
+  const h = s * (1.5 + r() * 0.8), w = s * 0.3, arms = [];
+  if (r() < 0.9) arms.push([-1, h * (0.35 + r() * 0.2), s * (0.3 + r() * 0.12), h * (0.22 + r() * 0.15)]);
+  if (r() < 0.7) arms.push([1, h * (0.45 + r() * 0.2), s * (0.26 + r() * 0.12), h * (0.18 + r() * 0.12)]);
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  const pass = (dx, k, col) => {
+    c.strokeStyle = col; c.lineWidth = w * k;
+    c.beginPath(); c.moveTo(x + dx, y); c.lineTo(x + dx, y - h + w / 2); c.stroke();
+    c.lineWidth = w * k * 0.75;
+    for (const [d, at, out, up] of arms) {
+      c.beginPath(); c.moveTo(x + dx, y - at); c.lineTo(x + dx + d * out, y - at); c.lineTo(x + dx + d * out, y - at - up); c.stroke();
+    }
+  };
+  pass(0, 1, '#2e6a3a');
+  pass(w * 0.12, 0.7, '#4f9a48');
+  pass(w * 0.24, 0.26, '#8ac860');
+}
 function drawBush(c, x, y, s, r) {
   c.setTransform(scale, 0, 0, scale, 0, 0);
   blob(c, x - s * 0.6, y + s * 0.12, s * 1.3, s * 0.28, 'rgba(150,70,60,0.25)');
@@ -313,6 +351,15 @@ function drawRoad() {
   ribbon(-0.9, -0.84, '#d7dbe4');
   ribbon(0.84, 0.9, '#d7dbe4');
   ribbon(-1, -0.96, 'rgba(60,40,60,0.35)');
+  // Пунктир по центру.
+  ctx.fillStyle = 'rgba(244,200,80,0.75)';
+  for (let k = 0; k < zs.length - 1; k++) {
+    const za = zs[k], zb = zs[k + 1];
+    if (za > 4 || Math.floor((za + zb) * 1.1) % 2) continue;
+    const pa = viewW / 2 + roadC(za) - cam / za, pb = viewW / 2 + roadC(zb) - cam / zb, wa = roadHW(za) * 0.025, wb = roadHW(zb) * 0.025;
+    poly(ctx, [[pa - wa, yAt(za)], [pa + wa, yAt(za)], [pb + wb, yAt(zb)], [pb - wb, yAt(zb)]]);
+    ctx.fill();
+  }
 }
 
 // ---------- Земля: полосы песка в перспективе ----------
@@ -351,7 +398,7 @@ function buildBg() {
 
 // ---------- Слои с постоянным коэффициентом сдвига ----------
 function drawClouds() {
-  const f = 0.015, shift = cam * f, cell = 520, half = viewW / 2 + 400;
+  const f = 0.015, shift = cam * f + performance.now() / 1000 * 9, cell = 520, half = viewW / 2 + 400;
   for (let i = Math.floor((shift - half) / cell); i <= Math.ceil((shift + half) / cell); i++) {
     const r = rng(hash(3, i));
     if (r() > 0.7) continue;
@@ -397,8 +444,9 @@ function drawFront() {
     const r = rng(hash(9, i));
     const o = (i + 0.2 + r() * 0.6) * cell;
     if (o > -1050 && o < 470) continue;
-    if (r() > 0.6) continue;
-    const w = 260 + r() * 160, h = 260 + r() * 460, seed = r() * 1e9 | 0;
+    const frame = o < 1300;
+    if (r() > 0.6 && !frame) continue;
+    const w = 260 + r() * 160, h = frame ? 600 + r() * 180 : 260 + r() * 460, seed = r() * 1e9 | 0;
     drawSprite(sprite(`front:${i}`, () => {
       const rr = rng(seed);
       return { cols: rockShape(rr, pickType(rng(hash(seed, 1)), TYPES.near), w, h, 'near'), pal: PAL.near, seed: rr() * 1e9 | 0 };
@@ -416,24 +464,11 @@ function render() {
   drawRoad();
   const items = [];
   ROWS.forEach((row, ri) => rowItems(row, ri, items));
+  frameItem(items);
   items.sort((a, b) => b.z - a.z);
   for (const it of items) { ctx.setTransform(1, 0, 0, 1, 0, 0); it.draw(); }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   drawFront();
-  drawHint();
-}
-
-let hintA = 1, touched = false;
-function drawHint() {
-  if (touched) hintA = Math.max(0, hintA - 0.03);
-  if (hintA <= 0) return;
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.globalAlpha = hintA * (0.75 + 0.25 * Math.sin(performance.now() / 300));
-  ctx.font = '800 26px "Trebuchet MS", system-ui, sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = 'rgba(80,25,40,0.5)'; ctx.fillText('←  проведи пальцем  →', viewW / 2 + 2, H - 38 + 2);
-  ctx.fillStyle = '#fff4e0'; ctx.fillText('←  проведи пальцем  →', viewW / 2, H - 38);
-  ctx.globalAlpha = 1;
 }
 
 // ---------- Камера: свайп с инерцией и мягким упором ----------
@@ -442,7 +477,7 @@ const toUnits = px => px * (cvs.width / innerWidth) / scale;
 
 cvs.addEventListener('pointerdown', e => {
   cvs.setPointerCapture(e.pointerId);
-  touched = true; vel = 0;
+  vel = 0;
   drag = { id: e.pointerId, x: e.clientX, cam0: cam, lx: e.clientX, lt: performance.now(), v: 0 };
   const d = document.documentElement;
   if (e.pointerType !== 'mouse' && !document.fullscreenElement && d.requestFullscreen) {
@@ -467,8 +502,8 @@ const endDrag = e => {
 cvs.addEventListener('pointerup', endDrag);
 cvs.addEventListener('pointercancel', endDrag);
 addEventListener('keydown', e => {
-  if (e.code === 'ArrowLeft') { keyDir = -1; touched = true; }
-  if (e.code === 'ArrowRight') { keyDir = 1; touched = true; }
+  if (e.code === 'ArrowLeft') keyDir = -1;
+  if (e.code === 'ArrowRight') keyDir = 1;
 });
 addEventListener('keyup', e => { if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') keyDir = 0; });
 
