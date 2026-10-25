@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#e88a57">
+<title>Волк Гейм</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2a1520;
+    touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; }
+  #rotate { display: none; position: fixed; inset: 0; z-index: 2; background: #e9a560; color: #5a2a2a;
+    font: 600 20px/1.4 system-ui, sans-serif; align-items: center; justify-content: center;
+    text-align: center; padding: 24px; }
+  #rotate .ico { font-size: 64px; line-height: 1; margin-bottom: 12px; }
+  @media (orientation: portrait) { #rotate { display: flex; } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="rotate"><div><div class="ico">⟳</div>Поверните устройство горизонтально</div></div>
+<script>
+'use strict';
+
+// Мир рисуется в «единицах»: высота экрана всегда 720 ед., ширина зависит от пропорций.
+const H = 720;
+// Слои режутся на кусочки по 512 физических пикселей; каждый кусочек рисуется один раз
+// и кэшируется, поэтому картинка стабильна и не дрожит.
+const CH = 512;
+const TAU = Math.PI * 2;
+
+const cvs = document.getElementById('c');
+const ctx = cvs.getContext('2d');
+let scale = 1, viewW = 1280, skyCv = null, PX = 300;
+
+// ---------- Детерминированный случай ----------
+function rng(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function hash(a, b) {
+  let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) | 0;
+  h = Math.imul(h ^ h >>> 13, 1274126177);
+  return (h ^ h >>> 16) >>> 0;
+}
+const smoothstep = (a, b, t) => { t = Math.min(1, Math.max(0, (t - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+function forCells(x0, x1, cellW, maxW, fn) {
+  const c0 = Math.floor((x0 - maxW) / cellW), c1 = Math.floor((x1 + maxW) / cellW);
+  for (let i = c0; i <= c1; i++) fn(i);
+}
+
+function addSmooth(c, p) {
+  const n = p.length;
+  c.moveTo((p[n - 1][0] + p[0][0]) / 2, (p[n - 1][1] + p[0][1]) / 2);
+  for (let i = 0; i < n; i++) {
+    const a = p[i], b = p[(i + 1) % n];
+    c.quadraticCurveTo(a[0], a[1], (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+  }
+  c.closePath();
+}
+function smoothPath(c, p) { c.beginPath(); addSmooth(c, p); }
+function poly(c, p) { c.beginPath(); c.moveTo(p[0][0], p[0][1]); for (let i = 1; i < p.length; i++) c.lineTo(p[i][0], p[i][1]); c.closePath(); }
+function blob(c, x, y, rx, ry, color) { c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, TAU); c.fillStyle = color; c.fill(); }
+
+// ---------- Палитры скал: освещённая грань, основной тон, тень, глубокая тень, верх ----------
+const PAL = {
+  far: { lit: '#dcb9c2', mid: '#c9a4b8', dark: '#ab8bac', deep: '#9a7ca2', top: '#ecd3cf', haze: '242,214,182', hazeA: 0.55 },
+  mid: { lit: '#eaa983', mid: '#d99073', dark: '#bb7271', deep: '#a3606d', top: '#f4c99a', haze: '246,206,152', hazeA: 0.4 },
+  pil: { lit: '#e27c47', mid: '#cc5c37', dark: '#a43f2f', deep: '#82302d', top: '#f2a865', haze: '245,190,132', hazeA: 0.22 },
+  can: { lit: '#cc6740', mid: '#b24a32', dark: '#8c3530', deep: '#692832', top: '#e58c56', haze: '120,55,70', hazeA: 0.3 },
+};
+
+// ---------- Формы скал ----------
+// cols — «колонны» скалы: у каждой своя освещённая и теневая грань.
+function mesa(r, cx, base, w, h, topRatio) {
+  const topW = w * topRatio, lean = (r() - 0.5) * w * 0.08;
+  const tl = cx - topW / 2 + lean, tR = cx + topW / 2 + lean, ty = base - h;
+  const cliff = h * (0.5 + r() * 0.3), foot = ty + cliff, sp = (w - topW) / 2;
+  const j = () => (r() - 0.5) * 4;
+  const pts = [[cx - w / 2 - 10, base + 40], [cx - w / 2, base + 3],
+    [tl - sp * 0.5, base - (base - foot) * 0.3], [tl - sp * 0.1, foot + 2],
+    [tl - topW * 0.02 + j(), ty + cliff * 0.5], [tl, ty + 4], [tl + 4, ty]];
+  const n = 2 + (r() * 3 | 0);
+  for (let i = 1; i < n; i++) pts.push([tl + (tR - tl) * i / n, ty + j() * 0.6]);
+  pts.push([tR - 4, ty], [tR, ty + 4], [tR + topW * 0.02 + j(), ty + cliff * 0.5],
+    [tR + sp * 0.1, foot + 2], [tR + sp * 0.5, base - (base - foot) * 0.3],
+    [cx + w / 2, base + 3], [cx + w / 2 + 10, base + 40]);
+  return { pts, top: ty, base, cols: [{ xl: tl, xr: tR, top: ty, slope: 0.12 }] };
+}
+
+// Скала-столб с «талией» и шапкой.
+function spire(r, cx, base, w, h) {
+  const lean = (r() - 0.5) * w * 0.6, top = base - h, ct = cx + lean;
+  const capW = w * (0.75 + r() * 0.45), neck = w * (0.45 + r() * 0.2), round = r() < 0.35;
+  const wAt = t => {
+    const a = w * 0.8 + (neck - w * 0.8) * smoothstep(0.05, 0.8, t);
+    return t > 0.78 ? a + (capW - a) * smoothstep(0.78, 0.92, t) : a;
+  };
+  const L = [], R = [], n = 8;
+  for (let i = 0; i <= n; i++) {
+    const t = 0.08 + 0.84 * i / n, y = base - h * t, c0 = cx + lean * t * t, ww = wAt(t) / 2;
+    L.push([c0 - ww + (r() - 0.5) * w * 0.07, y]);
+    R.push([c0 + ww + (r() - 0.5) * w * 0.07, y]);
+  }
+  const cap = round
+    ? [[ct - capW * 0.45, top + capW * 0.22], [ct - capW * 0.25, top + 2], [ct, top - 2], [ct + capW * 0.25, top + 2], [ct + capW * 0.45, top + capW * 0.22]]
+    : [[ct - capW / 2, top + 4], [ct - capW / 2 + 4, top], [ct + capW / 2 - 4, top], [ct + capW / 2, top + 4]];
+  const pts = [[cx - w * 1.2, base + 40], [cx - w * 0.95, base + 3], [cx - w * 0.6, base - h * 0.05],
+    ...L, ...cap, ...R.reverse(), [cx + w * 0.6, base - h * 0.05], [cx + w * 0.95, base + 3], [cx + w * 1.2, base + 40]];
+  return { pts, top, base, cols: [{ xl: ct - capW / 2, xr: ct + capW / 2, top, slope: (cx - ct) / h }] };
+}
+
+// Скальный блок из нескольких колонн разной высоты, как на референсах.
+function blockRock(r, cx, base, w, h) {
+  const n = 2 + (r() * 3 | 0), ws = [];
+  let sum = 0;
+  for (let i = 0; i < n; i++) { const v = 0.6 + r(); ws.push(v); sum += v; }
+  const main = r() * n | 0, x0 = cx - w / 2;
+  const pts = [[x0 - w * 0.18, base + 40], [x0 - w * 0.08, base + 2]], cols = [];
+  let cur = x0, top = base;
+  for (let i = 0; i < n; i++) {
+    const cw = ws[i] / sum * w, hj = i === main ? h : h * (0.5 + r() * 0.4);
+    const ty = base - hj, sl = (r() - 0.5) * cw * 0.25;
+    if (i === 0) pts.push([cur - 3, base - hj * 0.3]);
+    pts.push([cur + 2, ty + sl + 5], [cur + 5, ty + sl], [cur + cw - 5, ty - sl], [cur + cw - 1, ty - sl + 5]);
+    cols.push({ xl: cur, xr: cur + cw, top: Math.min(ty + sl, ty - sl), slope: 0.03 });
+    top = Math.min(top, ty - Math.abs(sl));
+    cur += cw;
+  }
+  pts.push([cur + 3, base - h * 0.2], [cur + w * 0.08, base + 2], [cur + w * 0.18, base + 40]);
+  return { pts, top, base, cols };
+}
+
+// Раскраска в стиле референсов: крупные плоские грани света и тени, уступы, светлые верхушки.
+function paintRock(c, s, pal, seed) {
+  const r = rng(seed);
+  let x0 = 1e9, x1 = -1e9;
+  for (const p of s.pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; }
+  const top = s.top, base = s.base, hh = base - top, w = x1 - x0, cols = s.cols, last = cols.length - 1;
+  smoothPath(c, s.pts);
+  c.fillStyle = pal.mid; c.fill();
+  c.save(); c.clip();
+
+  cols.forEach((k, j) => {
+    const cw = k.xr - k.xl, e = k.xl + cw * (0.3 + r() * 0.15), dy = base + 50 - k.top;
+    const left = j === 0 ? x0 - 60 : k.xl;
+    poly(c, [[left, k.top - 20], [e, k.top - 20], [e + dy * k.slope + (r() - 0.5) * cw * 0.3, base + 50], [left, base + 50]]);
+    c.fillStyle = pal.lit; c.globalAlpha = 0.85; c.fill();
+  });
+  cols.forEach((k, j) => {
+    const cw = k.xr - k.xl, e = k.xr - cw * (0.22 + r() * 0.14), dy = base + 50 - k.top;
+    const right = j === last ? x1 + 60 : k.xr + 1;
+    poly(c, [[e, k.top - 20], [right, k.top - 20], [j === last ? right : right + dy * k.slope, base + 50], [e + dy * k.slope, base + 50]]);
+    c.fillStyle = pal.dark; c.globalAlpha = 0.9; c.fill();
+  });
+
+  // Резкие грани-сколы внутри колонн.
+  const nf = Math.max(2, w / 45 | 0);
+  for (let i = 0; i < nf; i++) {
+    const k = cols[r() * cols.length | 0], cw = k.xr - k.xl;
+    const fx = k.xl + r() * cw, fw = 6 + r() * cw * 0.25, fy = k.top + 10 + r() * hh * 0.3, fl = hh * (0.25 + r() * 0.5);
+    const tilt = (r() - 0.5) * 16;
+    poly(c, [[fx, fy], [fx + fw, fy + fw * 0.4], [fx + fw + tilt, fy + fl], [fx + tilt * 0.6, fy + fl * 0.9]]);
+    const lite = r() < 0.5;
+    c.fillStyle = lite ? pal.lit : pal.deep; c.globalAlpha = lite ? 0.55 : 0.4; c.fill();
+  }
+
+  // Уступы: светлая полоска сверху, тень снизу.
+  const nl = Math.max(1, hh / 55 | 0);
+  for (let i = 0; i < nl; i++) {
+    const k = cols[r() * cols.length | 0], cw = k.xr - k.xl;
+    const ly = k.top + 18 + r() * (base - k.top - 30), lx = k.xl - 6 + r() * cw * 0.3, lw = cw * (0.4 + r() * 0.7), sl = (r() - 0.5) * 6;
+    poly(c, [[lx, ly], [lx + lw, ly + sl], [lx + lw, ly + sl + 4 + r() * 5], [lx, ly + 6]]);
+    c.fillStyle = pal.deep; c.globalAlpha = 0.45; c.fill();
+    poly(c, [[lx, ly - 2], [lx + lw, ly + sl - 2], [lx + lw, ly + sl], [lx, ly]]);
+    c.fillStyle = pal.top; c.globalAlpha = 0.6; c.fill();
+  }
+  c.globalAlpha = 1;
+
+  for (const k of cols) {
+    poly(c, [[k.xl - 8, k.top - 12], [k.xr + 8, k.top - 12], [k.xr + 8, k.top + 4 + r() * 3], [k.xl - 8, k.top + 6 + r() * 4]]);
+    c.fillStyle = pal.top; c.fill();
+  }
+
+  const hz = c.createLinearGradient(0, base - hh * 0.7, 0, base);
+  hz.addColorStop(0, `rgba(${pal.haze},0)`); hz.addColorStop(1, `rgba(${pal.haze},${pal.hazeA})`);
+  c.fillStyle = hz; c.fillRect(x0 - 5, base - hh * 0.7, w + 10, hh * 0.7 + 45);
+  c.restore();
+}
+
+function drawPlain(c, x0, x1, y, yb, top, bot, seed) {
+  const g = c.createLinearGradient(0, y, 0, yb);
+  g.addColorStop(0, top); g.addColorStop(1, bot);
+  c.beginPath(); c.moveTo(x0 - 10, yb);
+  for (let x = x0 - 10; x <= x1 + 10; x += 16) c.lineTo(x, y + 1.5 * Math.sin(x * 0.02 + seed));
+  c.lineTo(x1 + 10, yb); c.closePath();
+  c.fillStyle = g; c.fill();
+  forCells(x0, x1, 90, 60, i => {
+    const r = rng(hash(90 + seed, i));
+    for (let k = 0; k < 3; k++) {
+      const px = (i + r()) * 90, py = y + 5 + r() * (yb - y - 8), pw = 14 + r() * 40;
+      poly(c, [[px, py], [px + pw, py - 1], [px + pw * 0.8, py + 2.5], [px + 4, py + 2]]);
+      c.fillStyle = r() < 0.5 ? 'rgba(255,235,200,0.16)' : 'rgba(170,80,55,0.10)'; c.fill();
+    }
+  });
+}
+
+// ---------- Растения ----------
+const GREEN = { base: '#55804a', dark: '#3a5c36', light: '#8bb066' };
+const GREEN_FAR = { base: '#8f9468', dark: '#7d8160', light: '#a9a97a' };
+
+function drawSaguaro(c, x, y, h, w, r, col) {
+  const bend = (r() - 0.5) * 8, arms = [];
+  for (const dir of [-1, 1]) {
+    if (r() < (dir < 0 ? 0.85 : 0.7)) arms.push([dir, h * (0.35 + r() * 0.2), w * (0.75 + r() * 0.4), h * (0.22 + r() * 0.2)]);
+  }
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  const pass = (dx, k, color) => {
+    c.strokeStyle = color; c.lineWidth = w * k;
+    c.beginPath(); c.moveTo(x + dx, y + 2);
+    c.quadraticCurveTo(x + dx + bend * 0.2, y - h * 0.5, x + dx + bend, y - h + w / 2); c.stroke();
+    c.lineWidth = w * k * 0.72;
+    for (const [dir, at, out, up] of arms) {
+      const bx = x + dx + bend * (at / h) * (at / h), by = y - at;
+      c.beginPath(); c.moveTo(bx, by);
+      c.quadraticCurveTo(bx + dir * out, by + 2, bx + dir * out, by - up * 0.45);
+      c.lineTo(bx + dir * out + dir * 1.5, by - up); c.stroke();
+    }
+  };
+  pass(0, 1, col.base);
+  pass(w * 0.2, 0.42, col.dark);
+  pass(-w * 0.22, 0.2, col.light);
+}
+
+function drawAgave(c, x, y, s, r, col) {
+  const n = 7 + (r() * 5 | 0);
+  for (let i = 0; i < n; i++) {
+    const a = -Math.PI / 2 + (i / (n - 1) - 0.5) * 2.4 + (r() - 0.5) * 0.2, len = (14 + r() * 12) * s * (1 - Math.abs(i / (n - 1) - 0.5) * 0.6);
+    const bw = 3.2 * s, tx = x + Math.cos(a) * len, ty = y + Math.sin(a) * len;
+    poly(c, [[x - bw, y], [tx, ty], [x + bw, y]]);
+    c.fillStyle = i % 2 ? col.base : col.dark; c.fill();
+  }
+}
+
+// ---------- Небо (неподвижное) ----------
+function buildSky() {
+  skyCv = document.createElement('canvas');
+  skyCv.width = cvs.width; skyCv.height = cvs.height;
+  const c = skyCv.getContext('2d');
+  c.setTransform(scale, 0, 0, scale, 0, 0);
+  const g = c.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#e6845a'); g.addColorStop(0.3, '#ef9f63'); g.addColorStop(0.5, '#f5bf78');
+  g.addColorStop(0.64, '#fadca0'); g.addColorStop(1, '#fbe2a8');
+  c.fillStyle = g; c.fillRect(0, 0, viewW, H);
+  const sx = viewW * 0.7, sy = 175;
+  const rg = c.createRadialGradient(sx, sy, 10, sx, sy, 420);
+  rg.addColorStop(0, 'rgba(255,244,205,0.7)'); rg.addColorStop(0.3, 'rgba(255,236,190,0.28)'); rg.addColorStop(1, 'rgba(255,236,190,0)');
+  c.fillStyle = rg; c.fillRect(0, 0, viewW, H);
+  blob(c, sx, sy, 40, 40, '#fff0c6');
+  const r = rng(4242);
+  for (let i = 0; i < 26; i++) {
+    const a = r() * TAU, d = 60 + r() * 220, l = 30 + r() * 80;
+    c.beginPath(); c.moveTo(sx + Math.cos(a) * d, sy + Math.sin(a) * d);
+    c.lineTo(sx + Math.cos(a) * (d + l), sy + Math.sin(a) * (d + l));
+    c.lineWidth = 3 + r() * 8; c.strokeStyle = 'rgba(255,240,200,0.07)'; c.lineCap = 'round'; c.stroke();
+  }
+}
+
+// ---------- Фоновые слои ----------
+function drawClouds(c, x0, x1) {
+  forCells(x0, x1, 560, 420, i => {
+    const r = rng(hash(11, i));
+    if (r() > 0.6) return;
+    const cx = (i + r()) * 560, cy = 70 + r() * 170, len = 180 + r() * 260, n = 4 + (r() * 3 | 0);
+    for (let k = 0; k < n; k++) {
+      const ex = cx + (k / (n - 1) - 0.5) * len + (r() - 0.5) * 30, ey = cy + (r() - 0.5) * 10;
+      const rx = 40 + r() * len * 0.3, ry = 9 + r() * 14;
+      blob(c, ex + 6, ey + 6, rx, ry * 0.8, 'rgba(225,150,150,0.25)');
+    }
+    const r2 = rng(hash(11, i)); r2(); r2(); r2(); r2(); r2();
+    for (let k = 0; k < n; k++) {
+      const ex = cx + (k / (n - 1) - 0.5) * len + (r2() - 0.5) * 30, ey = cy + (r2() - 0.5) * 10;
+      const rx = 40 + r2() * len * 0.3, ry = 9 + r2() * 14;
+      blob(c, ex, ey, rx, ry, 'rgba(255,244,222,0.8)');
+    }
+    poly(c, [[cx - len * 0.7, cy + 6], [cx + len * 0.75, cy + 4], [cx + len * 0.8, cy + 9], [cx - len * 0.6, cy + 10]]);
+    c.fillStyle = 'rgba(255,244,222,0.55)'; c.fill();
+  });
+}
+
+function drawFar(c, x0, x1) {
+  forCells(x0, x1, 230, 320, i => {
+    const r = rng(hash(51, i));
+    if (r() > 0.85) return;
+    const cx = (i + r()) * 230;
+    const s = r() < 0.75 ? mesa(r, cx, 452, 180 + r() * 300, 35 + r() * 80, 0.35 + r() * 0.35) : blockRock(r, cx, 452, 120 + r() * 120, 60 + r() * 70);
+    paintRock(c, s, PAL.far, hash(52, i));
+  });
+  drawPlain(c, x0, x1, 450, 520, '#f2cf9e', '#efc590', 1);
+}
+
+const midRoadY = x => 520 + 12 * Math.sin(x * 0.0034 + 0.5) + 6 * Math.sin(x * 0.0093 + 2);
+
+function drawMid(c, x0, x1) {
+  forCells(x0, x1, 340, 320, i => {
+    const r = rng(hash(61, i));
+    if (r() > 0.82) return;
+    const cx = (i + r()) * 340, t = r();
+    const s = t < 0.5 ? mesa(r, cx, 496, 200 + r() * 280, 70 + r() * 90, 0.35 + r() * 0.3)
+      : t < 0.8 ? blockRock(r, cx, 496, 140 + r() * 140, 110 + r() * 80)
+        : spire(r, cx, 496, 40 + r() * 30, 120 + r() * 70);
+    paintRock(c, s, PAL.mid, hash(62, i));
+  });
+  drawPlain(c, x0, x1, 494, 590, '#ebb782', '#e2a573', 2);
+  // Дорога, петляющая вдалеке по равнине.
+  const wAt = x => 5 + 2 * Math.sin(x * 0.006 + 1);
+  c.beginPath();
+  for (let x = x0 - 20; x <= x1 + 20; x += 8) c.lineTo(x, midRoadY(x) - wAt(x) - 1.5);
+  for (let x = x1 + 20; x >= x0 - 20; x -= 8) c.lineTo(x, midRoadY(x) + wAt(x) + 1.5);
+  c.closePath(); c.fillStyle = 'rgba(250,225,190,0.8)'; c.fill();
+  c.beginPath();
+  for (let x = x0 - 20; x <= x1 + 20; x += 8) c.lineTo(x, midRoadY(x) - wAt(x));
+  for (let x = x1 + 20; x >= x0 - 20; x -= 8) c.lineTo(x, midRoadY(x) + wAt(x));
+  c.closePath(); c.fillStyle = '#9c8a95'; c.fill();
+  forCells(x0, x1, 150, 20, i => {
+    const r = rng(hash(63, i));
+    if (r() > 0.45) return;
+    const x = (i + r()) * 150, y = 500 + r() * 40;
+    if (Math.abs(y - midRoadY(x)) < 12) return;
+    drawSaguaro(c, x, y, 14 + r() * 8, 3, r, GREEN_FAR);
+  });
+}
+
+function drawPillars(c, x0, x1) {
+  forCells(x0, x1, 250, 300, i => {
+    const r = rng(hash(71, i));
+    if (r() > 0.8) return;
+    const cx = (i + r()) * 250, t = r();
+    const s = t < 0.45 ? spire(r, cx, 552, 40 + r() * 50, 170 + r() * 150)
+      : t < 0.8 ? blockRock(r, cx, 552, 140 + r() * 120, 150 + r() * 130)
+        : mesa(r, cx, 552, 160 + r() * 120, 120 + r() * 100, 0.55 + r() * 0.25);
+    paintRock(c, s, PAL.pil, hash(72, i));
+  });
+  drawPlain(c, x0, x1, 550, 650, '#e8a466', '#dc935a', 3);
+  forCells(x0, x1, 130, 30, i => {
+    const r = rng(hash(73, i));
+    if (r() > 0.5) return;
+    const x = (i + r()) * 130, y = 556 + r() * 8;
+    if (r() < 0.5) drawSaguaro(c, x, y, 26 + r() * 14, 5, r, GREEN_FAR);
+    else drawAgave(c, x, y, 0.6, r, GREEN_FAR);
+  });
+}
+
+// Грани-плиты на отвесной стене (стена каньона и передний обрыв).
+function faceSlabs(c, x0, x1, topF, yBot, cellW, seed, light, dark, deep) {
+  const B = i => {
+    const r = rng(hash(seed, i));
+    return { x: i * cellW + (r() - 0.5) * cellW * 0.5, tilt: (r() - 0.5) * cellW * 0.7, sh: r(), ly: r(), lw: r(), cr: r() };
+  };
+  const i0 = Math.floor(x0 / cellW) - 1, i1 = Math.floor(x1 / cellW) + 1;
+  let a = B(i0);
+  for (let i = i0; i <= i1; i++) {
+    const b = B(i + 1), ta = topF(a.x), tb = topF(b.x);
+    poly(c, [[a.x, ta - 4], [b.x, tb - 4], [b.x + b.tilt, yBot], [a.x + a.tilt, yBot]]);
+    if (a.sh < 0.35) { c.fillStyle = dark; c.globalAlpha = 0.55; c.fill(); }
+    else if (a.sh > 0.68) { c.fillStyle = light; c.globalAlpha = 0.5; c.fill(); }
+    c.globalAlpha = 0.5;
+    c.beginPath(); c.moveTo(a.x, ta + 6); c.lineTo(a.x + a.tilt * (0.4 + a.cr * 0.5), ta + (yBot - ta) * (0.4 + a.cr * 0.5));
+    c.lineWidth = 1.6; c.strokeStyle = deep; c.stroke();
+    if (a.ly < 0.6) {
+      const t = 0.2 + a.ly, yA = ta + (yBot - ta) * t, xa = a.x + a.tilt * t, xb = xa + (b.x - a.x) * (0.5 + a.lw * 0.5);
+      poly(c, [[xa, yA], [xb, yA + 2], [xb, yA + 7], [xa, yA + 5]]);
+      c.fillStyle = deep; c.globalAlpha = 0.45; c.fill();
+      poly(c, [[xa, yA - 2], [xb, yA], [xb, yA + 2], [xa, yA]]);
+      c.fillStyle = light; c.globalAlpha = 0.6; c.fill();
+    }
+    a = b;
+  }
+  c.globalAlpha = 1;
+}
+
+const rimY = x => 572 + 8 * Math.sin(x * 0.0031 + 1.3) + 4 * Math.sin(x * 0.0107 + 0.4);
+
+function drawCanyon(c, x0, x1) {
+  forCells(x0, x1, 260, 140, i => {
+    const r = rng(hash(21, i));
+    if (r() > 0.5) return;
+    const cx = (i + r()) * 260;
+    const s = r() < 0.6 ? spire(r, cx, rimY(cx) + 30, 30 + r() * 40, 60 + r() * 110) : blockRock(r, cx, rimY(cx) + 30, 90 + r() * 90, 60 + r() * 80);
+    paintRock(c, s, PAL.can, hash(22, i));
+  });
+  const a = x0 - 30, b = x1 + 30;
+  c.beginPath(); c.moveTo(a, H + 10);
+  for (let x = a; x <= b; x += 8) c.lineTo(x, rimY(x));
+  c.lineTo(b, H + 10); c.closePath();
+  const g = c.createLinearGradient(0, 560, 0, H);
+  g.addColorStop(0, '#b4553a'); g.addColorStop(0.35, '#8f3d3a'); g.addColorStop(1, '#3e2244');
+  c.fillStyle = g; c.fill();
+  c.save(); c.clip();
+  faceSlabs(c, a, b, x => rimY(x) + 6, H + 10, 70, 24, '#c86846', '#6e2a36', '#4e1f33');
+  c.beginPath();
+  for (let x = a; x <= b; x += 8) c.lineTo(x, rimY(x) - 2);
+  for (let x = b; x >= a; x -= 8) c.lineTo(x, rimY(x) + 6);
+  c.closePath(); c.fillStyle = '#d9845a'; c.fill();
+  const d = c.createLinearGradient(0, 620, 0, H);
+  d.addColorStop(0, 'rgba(50,25,60,0)'); d.addColorStop(1, 'rgba(40,20,52,0.85)');
+  c.fillStyle = d; c.fillRect(a, 600, b - a, H - 590);
+  c.restore();
+}
+
+// ---------- Игровая земля ----------
+const VMIN = 340, VMAX = 760, RAMP = 26000;   // скорость бега, ед./с; разгон по пройденному пути
+const GRAV = 2900, JUMP = 1000, AIR = 2 * JUMP / GRAV;
+const speedAt = d => VMIN + (VMAX - VMIN) * (1 - Math.exp(-Math.max(0, d) / RAMP));
+
+let G = null, roadY = x => 600;
+
+function newWorld(seed) {
+  const r = rng(seed);
+  const p1 = r() * TAU, p2 = r() * TAU, p3 = r() * TAU;
+  roadY = x => 604 + 26 * Math.sin(x * 0.0019 + p1) + 14 * Math.sin(x * 0.0051 + p2) + 4 * Math.sin(x * 0.013 + p3);
+  G = { seed, r, segs: [{ type: 'land', x0: -3000, x1: 1500 }], obs: [], end: 1500 };
+  groundLayer.cache.clear();
+}
+
+function makeObstacle(r, x) {
+  const t = r(), seed = r() * 1e9 | 0;
+  if (t < 0.4) { const w = 40 + r() * 22, h = 28 + r() * 18; return { x, kind: 'rock', w, h, hw: w * 0.38, hh: h * 0.8, seed }; }
+  if (t < 0.7) { const w = 30 + r() * 10, h = 32 + r() * 14; return { x, kind: 'barrel', w, h, hw: w * 0.4, hh: h * 0.85, seed }; }
+  const h = 62 + r() * 20, w = 18 + r() * 4;
+  return { x, kind: 'saguaro', w, h, hw: w * 0.5 + 6, hh: h - 8, seed };
+}
+
+// Ширина обрывов и расстояния между препятствиями рассчитаны от скорости в этом месте,
+// поэтому всё остаётся перепрыгиваемым при разгоне.
+function extendGround(to) {
+  while (G.end < to) {
+    const r = G.r, v = speedAt(G.end);
+    if (r() < 0.55) {
+      const l = v * AIR * (0.3 + r() * 0.28);
+      G.segs.push({ type: 'gap', x0: G.end, x1: G.end + l }); G.end += l;
+    }
+    const x0 = G.end, x1 = x0 + v * (1.8 + r() * 2.2);
+    const last = G.segs[G.segs.length - 1];
+    if (last.type === 'land') last.x1 = x1; else G.segs.push({ type: 'land', x0, x1 });
+    for (let x = x0 + v * 0.75; x < x1 - v * 0.8; x += v * (1.0 + r() * 1.1)) {
+      if (r() < 0.65) G.obs.push(makeObstacle(r, x));
+    }
+    G.end = x1;
+  }
+}
+
+function segIndex(x) {
+  let lo = 0, hi = G.segs.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (G.segs[m].x0 <= x) lo = m; else hi = m - 1; }
+  return lo;
+}
+function landY(x) {
+  const s = G.segs[segIndex(x)];
+  return s.type === 'land' && x >= s.x0 && x <= s.x1 ? roadY(x) : null;
+}
+function obsIndex(x) {
+  let lo = 0, hi = G.obs.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (G.obs[m].x < x) lo = m + 1; else hi = m; }
+  return lo;
+}
+
+// Угловатый край обрыва: козырёк сверху, подрез книзу. side: 1 — правый край суши, -1 — левый.
+function cliffEdge(i, side) {
+  const g = G.segs[i], r = rng(hash(G.seed + side, i));
+  const x = side > 0 ? g.x0 : g.x1, d = side, ty = roadY(x);
+  const p = [[x, ty], [x + d * 5, ty + 4], [x + d * 3, ty + 16], [x - d * 2, ty + 21]];
+  let y = ty + 21, k = 0;
+  while (y < H + 10) {
+    y += 22 + r() * 30;
+    p.push([x - d * ((y - ty) * 0.07 + r() * 8) + d * (k++ % 2 ? 6 : 0), y]);
+  }
+  p.push([x - d * (H + 30 - ty) * 0.07, H + 30]);
+  return p;
+}
+
+function groundPath(c, a0, b0, edges) {
+  const segs = G.segs;
+  c.beginPath();
+  for (let i = segIndex(a0); i < segs.length && segs[i].x0 < b0; i++) {
+    const s = segs[i];
+    if (s.type !== 'land') continue;
+    const a = Math.max(s.x0, a0), b = Math.min(s.x1, b0), pts = [];
+    if (s.x0 >= a0 && i > 0) {
+      const e = cliffEdge(i - 1, -1);
+      edges.push({ pts: e, side: -1 });
+      for (let k = e.length - 1; k >= 0; k--) pts.push(e[k]);
+    } else pts.push([a, H + 30]);
+    for (let x = a; x < b; x += 12) pts.push([x, roadY(x)]);
+    if (s.x1 <= b0 && i + 1 < segs.length) {
+      const e = cliffEdge(i + 1, 1);
+      edges.push({ pts: e, side: 1 });
+      for (const q of e) pts.push(q);
+    } else pts.push([b, roadY(b)], [b, H + 30]);
+    c.moveTo(pts[0][0], pts[0][1]);
+    for (let k = 1; k < pts.length; k++) c.lineTo(pts[k][0], pts[k][1]);
+    c.closePath();
+  }
+}
+
+function drawGround(c, x0, x1) {
+  extendGround(x1 + 2500);
+  const a0 = x0 - 60, b0 = x1 + 60, edges = [];
+  groundPath(c, a0, b0, edges);
+  const g = c.createLinearGradient(0, 580, 0, H);
+  g.addColorStop(0, '#dc7a3e'); g.addColorStop(0.45, '#bf5532'); g.addColorStop(1, '#7c2b34');
+  c.fillStyle = g; c.fill();
+  c.save(); c.clip();
+
+  faceSlabs(c, a0, b0, x => roadY(x) + 20, H + 10, 62, G.seed ^ 77, '#ea8a4c', '#8a3230', '#5e1f2c');
+
+  for (const e of edges) {
+    c.beginPath();
+    for (const q of e.pts) c.lineTo(q[0], q[1]);
+    c.lineWidth = e.side > 0 ? 22 : 12;
+    c.strokeStyle = e.side > 0 ? 'rgba(90,25,40,0.55)' : 'rgba(255,190,130,0.35)';
+    c.lineJoin = 'miter'; c.stroke();
+  }
+
+  // Асфальтовая дорога по краю каньона.
+  const band = (f0, f1, color) => {
+    c.beginPath();
+    for (let x = a0; x <= b0; x += 10) c.lineTo(x, f0(x));
+    for (let x = b0; x >= a0; x -= 10) c.lineTo(x, f1(x));
+    c.closePath(); c.fillStyle = color; c.fill();
+  };
+  band(x => roadY(x) - 2, x => roadY(x) + 12, '#6f6779');
+  band(x => roadY(x) - 2, x => roadY(x) + 2, '#d9d0d2');
+  band(x => roadY(x) + 12, x => roadY(x) + 18, '#eda761');
+  band(x => roadY(x) + 18, x => roadY(x) + 26, 'rgba(90,25,40,0.35)');
+  forCells(x0, x1, 40, 20, i => {
+    const r = rng(hash(G.seed ^ 44, i));
+    for (let k = 0; k < 3; k++) {
+      const px = (i + r()) * 40, py = roadY(px) + 4 + r() * 6;
+      blob(c, px, py, 4 + r() * 14, 0.7, r() < 0.5 ? 'rgba(255,255,255,0.10)' : 'rgba(40,30,50,0.18)');
+    }
+  });
+
+  const d = c.createLinearGradient(0, 650, 0, H);
+  d.addColorStop(0, 'rgba(60,20,50,0)'); d.addColorStop(1, 'rgba(60,20,50,0.45)');
+  c.fillStyle = d; c.fillRect(a0, 640, b0 - a0, H - 630);
+  c.restore();
+
+  for (let i = obsIndex(x0 - 80); i < G.obs.length && G.obs[i].x < x1 + 80; i++) drawObstacle(c, G.obs[i]);
+}
+
+function drawObstacle(c, o) {
+  const r = rng(o.seed), x = o.x, y = roadY(x) + 3, w = o.w, h = o.h;
+  blob(c, x + w * 0.2, y, w * 0.65, 4, 'rgba(70,25,40,0.3)');
+  if (o.kind === 'rock') {
+    const j = () => (r() - 0.5) * w * 0.12;
+    const p = [[x - w / 2, y], [x - w * 0.42 + j(), y - h * 0.55], [x - w * 0.12 + j(), y - h], [x + w * 0.22 + j(), y - h * 0.9], [x + w / 2 + j(), y - h * 0.4], [x + w / 2 + 2, y]];
+    poly(c, p); c.fillStyle = '#b6502f'; c.fill();
+    poly(c, [p[0], p[1], p[2], [x - w * 0.02, y - h * 0.5], [x - w * 0.1, y]]); c.fillStyle = '#d9713f'; c.fill();
+    poly(c, [p[1], p[2], p[3], [x + w * 0.05, y - h * 0.62], [x - w * 0.25, y - h * 0.62]]); c.fillStyle = '#eea062'; c.fill();
+    poly(c, [p[3], p[4], p[5], [x + w * 0.12, y], [x + w * 0.1, y - h * 0.5]]); c.fillStyle = '#84302b'; c.fill();
+  } else if (o.kind === 'barrel') {
+    const cy = y - h / 2;
+    blob(c, x, cy, w / 2, h / 2, GREEN.base);
+    c.save(); c.beginPath(); c.ellipse(x, cy, w / 2, h / 2, 0, 0, TAU); c.clip();
+    blob(c, x + w * 0.32, cy + 2, w * 0.35, h * 0.55, GREEN.dark);
+    blob(c, x - w * 0.3, cy - 2, w * 0.14, h * 0.4, GREEN.light);
+    c.lineWidth = 1.4; c.strokeStyle = 'rgba(30,50,30,0.35)';
+    for (let k = -2; k <= 2; k++) { c.beginPath(); c.ellipse(x, cy, Math.abs(k) * w * 0.17 + 0.5, h / 2, 0, 0, TAU); c.stroke(); }
+    c.restore();
+    c.strokeStyle = 'rgba(255,245,210,0.7)'; c.lineWidth = 1;
+    for (let k = 0; k < 10; k++) {
+      const a = r() * TAU, sx = x + Math.cos(a) * w / 2, sy = cy + Math.sin(a) * h / 2;
+      c.beginPath(); c.moveTo(sx, sy); c.lineTo(sx + Math.cos(a) * 4, sy + Math.sin(a) * 4); c.stroke();
+    }
+    blob(c, x - 4, y - h + 1, 4, 3, '#ec8a86'); blob(c, x + 3, y - h + 1, 4, 3, '#f2a39a'); blob(c, x, y - h - 1, 3, 2.5, '#f6c070');
+  } else {
+    drawSaguaro(c, x, y, h, w, r, GREEN);
+  }
+}
+
+// ---------- Слои параллакса ----------
+const groundLayer = { speed: 1.0, yTop: 430, yBot: H, draw: drawGround };
+const layers = [
+  { speed: 0.03, yTop: 20, yBot: 330, draw: drawClouds },
+  { speed: 0.07, yTop: 300, yBot: 520, draw: drawFar },
+  { speed: 0.16, yTop: 280, yBot: 590, draw: drawMid },
+  { speed: 0.33, yTop: 170, yBot: 650, draw: drawPillars },
+  { speed: 0.6, yTop: 420, yBot: H, draw: drawCanyon },
+  groundLayer,
+].map(l => Object.assign(l, { cache: new Map(), next: 0 }));
+
+function getChunk(L, k) {
+  let cv = L.cache.get(k);
+  if (cv) return cv;
+  cv = document.createElement('canvas');
+  cv.width = CH; cv.height = Math.ceil((L.yBot - L.yTop) * scale) + 1;
+  const c = cv.getContext('2d');
+  c.setTransform(scale, 0, 0, scale, -k * CH, -L.yTop * scale);
+  L.draw(c, k * CH / scale, (k + 1) * CH / scale);
+  L.cache.set(k, cv);
+  return cv;
+}
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cvs.width = Math.round(innerWidth * dpr);
+  cvs.height = Math.round(innerHeight * dpr);
+  scale = cvs.height / H;
+  viewW = cvs.width / scale;
+  PX = Math.min(viewW * 0.24, 340);
+  for (const L of layers) L.cache.clear();
+  buildSky();
+}
+
+// ---------- Игрок (временно — прямоугольник) ----------
+const P = { w: 36, h: 50, x: 0, y: 0, vy: 0, ground: true, coyote: 0, buffer: 0, hold: false, sq: 0 };
+let state = 'ready', cam = 0, runV = 0, overT = 0, score = 0, best = 0, newBest = false;
+try { best = +localStorage.getItem('volk-game-best') || 0; } catch (e) {}
+
+function reset() {
+  newWorld(Math.random() * 1e9 | 0);
+  cam = 0; runV = 0; score = 0; newBest = false;
+  P.x = PX; P.y = roadY(P.x); P.vy = 0; P.ground = true; P.sq = 0; P.buffer = 0;
+}
+
+function supportY() {
+  const a = landY(P.x - P.w / 2 + 5), b = landY(P.x + P.w / 2 - 5);
+  if (a === null) return b;
+  if (b === null) return a;
+  return Math.min(a, b);
+}
+
+function die(hit) {
+  state = 'dying'; overT = 0;
+  if (hit) P.vy = -650;
+  if (score > best) {
+    best = score; newBest = true;
+    try { localStorage.setItem('volk-game-best', String(Math.floor(best))); } catch (e) {}
+  }
+}
+
+function step(dt) {
+  P.sq += (0 - P.sq) * Math.min(1, dt * 12);
+  if (state === 'ready') { P.x = cam + PX; P.y = roadY(P.x); return; }
+  if (state !== 'run') {
+    overT += dt;
+    if (P.y < H + 200) { P.vy += GRAV * dt; P.y += P.vy * dt; }
+    if (state === 'dying' && overT > 0.8) state = 'over';
+    return;
+  }
+  runV = Math.min(speedAt(cam), runV + 1100 * dt);
+  cam += runV * dt;
+  P.x = cam + PX;
+  score = cam / 40;
+  P.buffer -= dt; P.coyote -= dt;
+
+  const sup = supportY();
+  if (P.ground) {
+    if (sup === null) { P.ground = false; P.coyote = 0.1; P.vy = 0; }
+    else P.y = sup;
+  }
+  if (P.buffer > 0 && (P.ground || P.coyote > 0)) {
+    P.vy = -JUMP; P.ground = false; P.coyote = 0; P.buffer = 0; P.sq = -0.2;
+  }
+  if (!P.ground) {
+    const prev = P.y;
+    // Отпустил палец раньше — прыжок ниже.
+    P.vy += GRAV * (P.vy < 0 && !P.hold ? 2.2 : 1) * dt;
+    P.y += P.vy * dt;
+    if (P.vy >= 0 && sup !== null && P.y >= sup && prev <= sup + 4) {
+      P.y = sup; P.vy = 0; P.ground = true; P.sq = 0.22;
+    } else {
+      const fy = landY(P.x + P.w / 2 - 5);
+      if (fy !== null && P.y > fy + 10) return die(false);   // врезался в стену обрыва
+    }
+    if (P.y > H + 60) return die(false);
+  }
+
+  const px0 = P.x - P.w / 2 + 5, px1 = P.x + P.w / 2 - 5, py0 = P.y - P.h + 5;
+  for (let i = obsIndex(P.x - 120); i < G.obs.length && G.obs[i].x < P.x + 120; i++) {
+    const o = G.obs[i], oy = roadY(o.x) + 3;
+    if (px1 > o.x - o.hw && px0 < o.x + o.hw && P.y > oy - o.hh && py0 < oy) return die(true);
+  }
+}
+
+// ---------- Ввод ----------
+function press() {
+  if (state === 'ready') { state = 'run'; P.buffer = 0; P.hold = true; return; }
+  if (state === 'run') { P.buffer = 0.13; P.hold = true; return; }
+  if (state === 'over' && overT > 1.2) { reset(); state = 'run'; P.hold = true; }
+}
+function release() { P.hold = false; }
+
+addEventListener('pointerdown', e => {
+  const d = document.documentElement;
+  if (!document.fullscreenElement && d.requestFullscreen && e.pointerType !== 'mouse') {
+    d.requestFullscreen().then(() => {
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+    }).catch(() => {});
+  }
+  press();
+});
+addEventListener('pointerup', release);
+addEventListener('pointercancel', release);
+addEventListener('keydown', e => {
+  if (e.repeat) return;
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Enter') { e.preventDefault(); press(); }
+});
+addEventListener('keyup', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Enter') release();
+});
+
+// ---------- Отрисовка кадра ----------
+function text(str, x, y, size, align, color) {
+  ctx.font = `800 ${size}px "Trebuchet MS", "Arial Rounded MT Bold", system-ui, sans-serif`;
+  ctx.textAlign = align; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(110,35,45,0.55)'; ctx.fillText(str, x + size * 0.06, y + size * 0.08);
+  ctx.fillStyle = color || '#fff3dc'; ctx.fillText(str, x, y);
+}
+
+function drawPlayer() {
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  const sx = P.x - cam, sup = state === 'run' || state === 'ready' ? supportY() : null;
+  if (sup !== null) {
+    const k = Math.max(0.3, 1 - (sup - P.y) / 250);
+    blob(ctx, sx, sup + 2, P.w * 0.6 * k, 4 * k, 'rgba(70,25,40,0.3)');
+  }
+  const w = P.w * (1 + P.sq * 0.6), h = P.h * (1 - P.sq * 0.6), x = sx - w / 2, y = P.y - h;
+  ctx.save();
+  if (state === 'dying' || state === 'over') { ctx.translate(sx, P.y - h / 2); ctx.rotate(Math.min(overT, 1) * 2.5); ctx.translate(-sx, -(P.y - h / 2)); }
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, 7) : ctx.rect(x, y, w, h);
+  ctx.fillStyle = '#5a5f86'; ctx.fill();
+  ctx.fillStyle = '#7a80a8'; ctx.fillRect(x + 4, y + 4, w * 0.35, h - 8);
+  blob(ctx, x + w * 0.72, y + h * 0.25, 5, 5.5, '#fff7e8');
+  blob(ctx, x + w * 0.78, y + h * 0.26, 2.4, 2.8, '#2a2030');
+  ctx.restore();
+}
+
+function drawHud() {
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  if (state !== 'ready') text(`${Math.floor(score)} м`, 28, 40, 34, 'left');
+  if (best > 0) text(`Рекорд: ${Math.floor(best)} м`, viewW - 28, 40, 24, 'right', '#ffe2b8');
+  const cx = viewW / 2;
+  if (state === 'ready') {
+    text('Волк Гейм', cx, 210, 76, 'center');
+    text('Тапни, чтобы бежать. Тап — прыжок, держи — выше', cx, 285, 26, 'center', '#ffe9c8');
+  } else if (state === 'over') {
+    const a = Math.min(1, overT - 0.8);
+    ctx.globalAlpha = Math.max(0, a);
+    text('Упс!', cx, 200, 80, 'center');
+    text(newBest ? `Новый рекорд: ${Math.floor(score)} м` : `Пробежал ${Math.floor(score)} м`, cx, 270, 32, 'center', '#ffe9c8');
+    if (overT > 1.2) text('Тап — ещё раз', cx, 320, 26, 'center', '#ffe9c8');
+    ctx.globalAlpha = 1;
+  }
+}
+
+function render() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(skyCv, 0, 0);
+  for (const L of layers) {
+    const off = Math.round(cam * L.speed * scale);
+    const k0 = Math.floor(off / CH), k1 = Math.floor((off + cvs.width - 1) / CH);
+    const y = Math.round(L.yTop * scale);
+    for (let k = k0; k <= k1; k++) ctx.drawImage(getChunk(L, k), k * CH - off, y);
+    for (const k of L.cache.keys()) if (k < k0 - 1) L.cache.delete(k);
+    L.next = k1 + 1;
+  }
+  drawPlayer();
+  drawHud();
+  // Заранее дорисовываем по одному кусочку за кадр, чтобы на скорости не было рывков.
+  for (const L of layers) {
+    if (!L.cache.has(L.next)) { getChunk(L, L.next); break; }
+    if (L === groundLayer && !L.cache.has(L.next + 1)) { getChunk(L, L.next + 1); break; }
+  }
+}
+
+let last = 0, acc = 0;
+const DT = 1 / 120;
+function frame(t) {
+  const dt = last ? Math.min(0.05, (t - last) / 1000) : 0;
+  last = t; acc += dt;
+  while (acc >= DT) { step(DT); acc -= DT; }
+  render();
+  requestAnimationFrame(frame);
+}
+
+let rt = 0;
+addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { resize(); if (state === 'ready') P.x = cam + PX; }, 120); });
+document.addEventListener('visibilitychange', () => { last = 0; P.hold = false; });
+
+resize();
+reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
