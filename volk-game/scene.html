@@ -67,125 +67,84 @@ function roadC(z) {
 }
 const roadHW = z => 250 / z;
 
-// ---------- Палитры: глубокая тень, тень, основной тон, свет, верх, блик ----------
+// ---------- Палитры скал: полосы породы, светлый верх, цвет тени ----------
 const PAL = {
-  near: { deep: '#6a2129', dark: '#8c2d2d', mid: '#ab4135', lit: '#cd5c3b', top: '#e8855a', edge: '#f4a36e', fw: 52, ao: 0.35 },
-  mid: { deep: '#b0604f', dark: '#c3704f', mid: '#d5844f', lit: '#e69b59', top: '#f5c283', edge: '#f8d098', fw: 38, haze: 0.12 },
-  far: { deep: '#cf9c87', dark: '#dba88b', mid: '#e5b78e', lit: '#eec596', top: '#f7dbb0', edge: '#fbe6c4', fw: 36, haze: 0.22 },
-  range: { deep: '#c4a6bb', dark: '#cfb2c1', mid: '#dabdc4', lit: '#e6cac8', top: '#f0dccf', edge: '#f6e6d8', fw: 46, haze: 0.3 },
+  near: { bands: ['#c9573c', '#d66a40', '#bf4e3a', '#e08446', '#cf6a3e', '#d99350'], top: '#f0a766', shadow: '#5e2440', shadowA: 0.5, ao: 0.3 },
+  mid: { bands: ['#da8a5c', '#e59c62', '#d27e58', '#eaae6c', '#df9460', '#e7b878'], top: '#f6c88e', shadow: '#7e4560', shadowA: 0.38, haze: 0.12 },
+  far: { bands: ['#e6b08c', '#edbf96', '#e2a888', '#f1cba0', '#e9b892'], top: '#f8dcb4', shadow: '#a77c94', shadowA: 0.32, haze: 0.22 },
+  range: { bands: ['#d8bcc6', '#e0c6c8', '#d3b4c2', '#e6d0cc'], top: '#f0e0d4', shadow: '#a990ac', shadowA: 0.3, haze: 0.3 },
 };
 const HAZE = '246,228,200';
-const SH = ['deep', 'dark', 'mid', 'lit'];
 
-// ---------- Гранёные скалы ----------
-// Колонна: угловатый контур с острой или плоской вершиной. Координаты от основания (y = 0).
-function column(r, x, w, h) {
-  const l = x - w / 2, rr = x + w / 2, top = -h, pts = [[l - w * 0.14, 16]];
-  const nL = 2 + (r() * 3 | 0), nR = 2 + (r() * 3 | 0);
-  for (let i = 1; i <= nL; i++) { const t = i / (nL + 1); pts.push([l + (r() - 0.5) * w * 0.16 + t * w * 0.06, -h * t]); }
-  if (r() < 0.45) {
-    pts.push([l + w * 0.04, top + 4 + r() * 6], [rr - w * 0.06, top + r() * 6]);
-  } else {
-    const peak = x + (r() - 0.5) * w * 0.5;
-    pts.push([l + w * 0.06, top + h * (0.06 + r() * 0.06)], [peak, top]);
-    if (r() < 0.6) pts.push([peak + w * 0.2, top + h * (0.02 + r() * 0.04)]);
-    pts.push([rr - w * 0.05, top + h * (0.05 + r() * 0.07)]);
+// Мягкий контур: кривые через середины отрезков, углы скругляются сами.
+function smoothPath(c, p) {
+  const n = p.length;
+  c.beginPath();
+  c.moveTo((p[n - 1][0] + p[0][0]) / 2, (p[n - 1][1] + p[0][1]) / 2);
+  for (let i = 0; i < n; i++) {
+    const a = p[i], b = p[(i + 1) % n];
+    c.quadraticCurveTo(a[0], a[1], (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
   }
-  for (let i = nR; i >= 1; i--) { const t = i / (nR + 1); pts.push([rr + (r() - 0.5) * w * 0.16 - t * w * 0.06, -h * t]); }
-  pts.push([rr + w * 0.14, 16]);
+  c.closePath();
+}
+
+// ---------- Формы скал в духе Койота и Бегуна ----------
+// Координаты от основания (y = 0), вверх — минус.
+function withBox(pts) {
+  let l = 1e9, rr = -1e9, top = 0;
+  for (const p of pts) { if (p[0] < l) l = p[0]; if (p[0] > rr) rr = p[0]; if (p[1] < top) top = p[1]; }
   return { pts, l, rr, top, base: 0 };
 }
 
-// Столовая гора / останец: плоская вершина, отвесный уступ, осыпь у подножия.
-function flatColumn(r, x, w, h) {
-  const topW = w * (0.55 + r() * 0.3), tl = x - topW / 2, tr = x + topW / 2, top = -h, foot = -h * (0.25 + r() * 0.2);
-  const j = () => (r() - 0.5) * w * 0.03;
-  const pts = [[x - w / 2 - 10, 16], [x - w / 2, 0], [tl - (tl - x + w / 2) * 0.35, foot],
-    [tl + j(), -h * 0.55], [tl, top + 4], [tl + 4, top], [tr - 4, top + j()], [tr, top + 4],
-    [tr + j(), -h * 0.55], [tr + (x + w / 2 - tr) * 0.35, foot], [x + w / 2, 0], [x + w / 2 + 10, 16]];
-  return { pts, l: tl, rr: tr, top, base: 0 };
+// Высокий тонкий столб: «талия», лёгкий наклон и нависающая шапка — вот-вот упадёт.
+function pillar(r, x, w, h) {
+  const side = r() < 0.5 ? -1 : 1, lean = side * w * (0.1 + r() * 0.6), neck = w * (0.5 + r() * 0.2);
+  const capW = w * (1.15 + r() * 0.6), capH = h * (0.09 + r() * 0.07), cx = x + lean + side * w * r() * 0.2, ty = -h;
+  const j = () => (r() - 0.5) * w * 0.06;
+  return withBox([
+    [x - w * 0.85, 16], [x - w * 0.6, -h * 0.03],
+    [x - w * 0.42 + lean * 0.15 + j(), -h * 0.25], [x - w * 0.36 + lean * 0.4 + j(), -h * 0.5],
+    [x - neck / 2 + lean * 0.75, -h * 0.78], [x - neck / 2 + lean * 0.85, ty + capH * 1.2],
+    [cx - capW / 2 + w * 0.06, ty + capH], [cx - capW / 2, ty + capH * 0.45],
+    [cx - capW * 0.36, ty + (r() - 0.5) * capH * 0.2], [cx + capW * 0.08, ty - r() * capH * 0.12],
+    [cx + capW * 0.36, ty + (r() - 0.5) * capH * 0.25], [cx + capW / 2, ty + capH * 0.5],
+    [cx + capW / 2 - w * 0.06, ty + capH],
+    [x + neck / 2 + lean * 0.85, ty + capH * 1.2], [x + neck / 2 + lean * 0.75, -h * 0.78],
+    [x + w * 0.36 + lean * 0.4 + j(), -h * 0.5], [x + w * 0.42 + lean * 0.15 + j(), -h * 0.25],
+    [x + w * 0.6, -h * 0.03], [x + w * 0.85, 16]]);
 }
 
-// ---------- Разнообразные формы скал ----------
-// Неровный край снизу вверх: изломы и уступы-полки. dir: -1 — левый край, 1 — правый.
-function edge(r, x0, x1, y1, dir, w, ledgy) {
-  const pts = [], n = 3 + (r() * 3 | 0), step = y1 / (n + 1);
-  for (let i = 1; i <= n; i++) {
-    const t = i / (n + 1), y = y1 * t, x = x0 + (x1 - x0) * t + (r() - 0.5) * w * 0.09;
-    if (r() < ledgy) {
-      const jut = dir * w * (0.05 + r() * 0.11);
-      pts.push([x, y], [x + jut, y + step * 0.12], [x + jut * 0.8, y + step * 0.55]);
-    } else pts.push([x, y]);
-  }
-  return pts;
+// Столовая гора: плоский верх, крутые стенки, мягкая осыпь у подножия.
+function mesa(r, x, w, h, topRatio) {
+  const tw = w * topRatio, lean = (r() - 0.5) * w * 0.06, tl = x - tw / 2 + lean, tr = x + tw / 2 + lean, ty = -h;
+  const skL = h * (0.25 + r() * 0.2), skR = h * (0.25 + r() * 0.2);
+  return withBox([
+    [x - w / 2 - 12, 16], [x - w / 2, 0], [tl - (tl - x + w / 2) * 0.4, -skL * 0.6], [tl - w * 0.02, -skL],
+    [tl - w * 0.01, -h * 0.7], [tl, ty + h * 0.08], [tl + w * 0.03, ty],
+    [x + lean + (r() - 0.5) * tw * 0.3, ty - r() * h * 0.025],
+    [tr - w * 0.03, ty], [tr, ty + h * 0.08], [tr + w * 0.01, -h * 0.7], [tr + w * 0.02, -skR],
+    [tr + (x + w / 2 - tr) * 0.4, -skR * 0.6], [x + w / 2, 0], [x + w / 2 + 12, 16]]);
 }
 
-function withBox(pts, h, extra) {
-  let l = 1e9, rr = -1e9;
-  for (const p of pts) { if (p[0] < l) l = p[0]; if (p[0] > rr) rr = p[0]; }
-  return Object.assign({ pts, l, rr, top: -h, base: 0 }, extra);
-}
-
-// Универсальный блок: ширина у основания w, у вершины topW, наклон lean, тип вершины,
-// нависающий край overhang (-1 влево, 1 вправо), трещины cracks.
-function block(r, x, w, h, o) {
-  const l0 = x - w / 2, r0 = x + w / 2, cx = x + (o.lean || 0), tw = o.topW;
-  const lt = cx - tw / 2, rt = cx + tw / 2, ty = -h, ledgy = o.ledgy == null ? 0.35 : o.ledgy;
-  const pts = [[l0 - w * (0.05 + r() * 0.12), 16], [l0, 0]];
-  const sideTop = o.overhang ? 0.78 : 0.9;
-  pts.push(...edge(r, l0, lt, -h * sideTop, -1, w, ledgy));
-  if (o.overhang === -1) {
-    const ox = w * (0.18 + r() * 0.14);
-    pts.push([lt + w * 0.04, -h * 0.8], [lt - ox, -h * (0.83 + r() * 0.03)], [lt - ox - w * 0.03, -h * 0.93]);
-  }
-  if (o.top === 'flat') {
-    const tilt = (r() - 0.5) * h * 0.06;
-    pts.push([lt, ty + 6 + tilt], [lt + 5, ty + tilt]);
-    if (r() < 0.5) { const nx = lt + tw * (0.3 + r() * 0.4); pts.push([nx - 6, ty + tilt * 0.5], [nx, ty + 5 + r() * 6], [nx + 5, ty]); }
-    pts.push([rt - 5, ty - tilt], [rt, ty + 6 - tilt]);
-  } else if (o.top === 'slant') {
-    const hi = r() < 0.5;
-    pts.push([lt, ty + (hi ? 0 : h * 0.18)], [lt + tw * 0.4, ty + (hi ? h * 0.04 : h * 0.12)], [rt, ty + (hi ? h * 0.2 : 0)]);
-  } else {
-    const k = 2 + (r() * 3 | 0);
-    pts.push([lt, ty + h * (0.05 + r() * 0.08)]);
-    for (let i = 1; i < k; i++) pts.push([lt + tw * i / k + (r() - 0.5) * tw * 0.15, ty + (i % 2 ? 0 : h * (0.04 + r() * 0.07)) + r() * 4]);
-    pts.push([rt, ty + h * (0.04 + r() * 0.1)]);
-  }
-  if (o.overhang === 1) {
-    const ox = w * (0.18 + r() * 0.14);
-    pts.push([rt + ox + w * 0.03, -h * 0.93], [rt + ox, -h * (0.83 + r() * 0.03)], [rt - w * 0.04, -h * 0.8]);
-  }
-  pts.push(...edge(r, r0, rt, -h * sideTop, 1, w, ledgy).reverse());
-  pts.push([r0, 0], [r0 + w * (0.05 + r() * 0.12), 16]);
-  return withBox(pts, h, { cracks: o.cracks || 0 });
-}
-
-// Арка: две ноги разной толщины, перемычка, неровный проём.
+// Арка: две ноги разной толщины и мягкий проём.
 function arch(r, x, w, h) {
-  const l0 = x - w / 2, r0 = x + w / 2, lw = w * (0.2 + r() * 0.1), rw = w * (0.24 + r() * 0.12);
-  const il = l0 + lw, ir = r0 - rw, oh = h * (0.5 + r() * 0.15), ty = -h;
-  const pts = [[l0 - w * 0.08, 16], [l0, 0]];
-  pts.push(...edge(r, l0, l0 + w * 0.05, -h * 0.85, -1, w * 0.6, 0.3));
-  pts.push([l0 + w * 0.06, ty + h * 0.1], [l0 + w * 0.2, ty + 4], [x + (r() - 0.5) * w * 0.2, ty + r() * 6],
-    [r0 - w * 0.15, ty + h * (0.03 + r() * 0.06)], [r0 - w * 0.03, ty + h * 0.14]);
-  pts.push(...edge(r, r0, r0 - w * 0.04, -h * 0.85, 1, w * 0.6, 0.3).reverse());
-  pts.push([r0, 0], [r0 + w * 0.08, 16], [ir + w * 0.03, 16], [ir, 0]);
-  const n = 9;
-  for (let i = 0; i <= n; i++) {
-    const a = i / n * Math.PI, jx = i > 0 && i < n ? (r() - 0.5) * w * 0.04 : 0, jy = i > 0 && i < n ? (r() - 0.5) * h * 0.05 : 0;
-    const px = (il + ir) / 2 + Math.cos(a) * (ir - il) / 2 + jx;
-    const py = Math.sin(a) > 0.3 ? -oh * Math.pow(Math.sin(a), 0.6) + jy : -oh * 0.45 * Math.sin(a) / 0.3;
-    pts.push([px, py]);
+  const l0 = x - w / 2, r0 = x + w / 2, il = l0 + w * (0.22 + r() * 0.08), ir = r0 - w * (0.26 + r() * 0.1);
+  const oh = h * (0.52 + r() * 0.1), ty = -h;
+  const pts = [[l0 - w * 0.1, 16], [l0, 0], [l0 + w * 0.02, -h * 0.5], [l0 + w * 0.03, ty + h * 0.12], [l0 + w * 0.1, ty],
+    [x + (r() - 0.5) * w * 0.15, ty - h * 0.03], [r0 - w * 0.12, ty + h * 0.03], [r0 - w * 0.02, ty + h * 0.15],
+    [r0, -h * 0.5], [r0, 0], [r0 + w * 0.1, 16], [ir + w * 0.04, 16], [ir, 0]];
+  for (let i = 1; i < 8; i++) {
+    const a = i / 8 * Math.PI;
+    pts.push([(il + ir) / 2 + Math.cos(a) * (ir - il) / 2, -oh * Math.pow(Math.sin(a), 0.7)]);
   }
-  pts.push([il, 0], [il - w * 0.03, 16]);
-  return withBox(pts, h, { cracks: 1 });
+  pts.push([il, 0], [il - w * 0.04, 16]);
+  return withBox(pts);
 }
 
 const TYPES = {
-  near: [['pillar', 2], ['lean', 1.5], ['overhang', 1.5], ['cracked', 1.5], ['cluster', 2.5], ['table', 0.8]],
-  mid: [['table', 2.5], ['pillar', 1.5], ['lean', 1], ['overhang', 1], ['cracked', 1], ['cluster', 2], ['arch', 0.8]],
-  far: [['table', 4], ['cluster', 1.5], ['pillar', 1], ['lean', 1], ['cracked', 0.6]],
+  near: [['pillar', 3], ['butte', 2], ['mesa', 1], ['cluster', 2.5]],
+  mid: [['mesa', 3], ['butte', 2], ['pillar', 2], ['cluster', 1.5], ['arch', 0.4]],
+  far: [['mesa', 4], ['butte', 2], ['pillar', 1], ['cluster', 1]],
 };
 function pickType(r, list) {
   let sum = 0; for (const [, wgt] of list) sum += wgt;
@@ -194,127 +153,78 @@ function pickType(r, list) {
   return list[0][0];
 }
 
-// Одна скала заданного типа; x — смещение внутри скопления.
-function shape(r, type, x, w, h) {
-  const side = r() < 0.5 ? -1 : 1;
+function oneRock(r, type, x, w, h) {
   switch (type) {
-    case 'pillar': {
-      const pw = w * (0.26 + r() * 0.14);
-      return block(r, x, pw, h * (1 + r() * 0.15), { topW: pw * (0.7 + r() * 0.6), lean: (r() - 0.5) * pw * 0.5, top: r() < 0.5 ? 'flat' : 'peak', ledgy: 0.45 });
-    }
-    case 'table': {
-      const th = h * (0.4 + r() * 0.2);
-      return block(r, x, w, th, { topW: w * (0.6 + r() * 0.25), lean: (r() - 0.5) * w * 0.12, top: 'flat', ledgy: 0.55 });
-    }
-    case 'lean': {
-      const lw = w * (0.4 + r() * 0.15);
-      return block(r, x - side * lw * 0.2, lw, h * (0.8 + r() * 0.2), { topW: lw * (0.5 + r() * 0.3), lean: side * lw * (0.45 + r() * 0.35), top: 'slant', ledgy: 0.3 });
-    }
-    case 'overhang': {
-      const ow = w * (0.45 + r() * 0.2);
-      return block(r, x - side * ow * 0.15, ow, h * (0.75 + r() * 0.2), { topW: ow * (0.6 + r() * 0.2), lean: side * ow * 0.08, top: 'flat', overhang: side, ledgy: 0.3 });
-    }
-    case 'cracked': {
-      const cw = w * (0.55 + r() * 0.25);
-      return block(r, x, cw, h * (0.85 + r() * 0.15), { topW: cw * (0.55 + r() * 0.3), lean: (r() - 0.5) * cw * 0.2, top: r() < 0.6 ? 'peak' : 'flat', cracks: 2 + (r() * 2 | 0), ledgy: 0.35 });
-    }
-    case 'arch':
-      return arch(r, x, w, h * (0.8 + r() * 0.2));
+    case 'pillar': return pillar(r, x, w * (0.28 + r() * 0.12), h * (0.95 + r() * 0.2));
+    case 'mesa': return mesa(r, x, w, h * (0.45 + r() * 0.2), 0.55 + r() * 0.25);
+    case 'butte': return mesa(r, x, w * (0.6 + r() * 0.15), h * (0.75 + r() * 0.2), 0.45 + r() * 0.15);
+    case 'arch': return arch(r, x, w, h * (0.8 + r() * 0.2));
   }
 }
 
-// Скала целиком: одиночная форма или скопление из разных форм, высокая — сзади.
+// Скала целиком: одна форма или группа из разных, высокая — сзади.
 function rockShape(r, type, w, h, set) {
-  if (type !== 'cluster') return [shape(r, type, (r() - 0.5) * w * 0.1, w, h)];
+  if (type !== 'cluster') return [oneRock(r, type, (r() - 0.5) * w * 0.1, w, h)];
   const n = 2 + (r() * 2 | 0), cols = [];
   for (let i = 0; i < n; i++) {
     let t = pickType(r, TYPES[set]);
     if (t === 'cluster' || t === 'arch') t = 'pillar';
-    const sw = w * (0.45 + r() * 0.3), sh = h * (i === 0 ? 1 : 0.45 + r() * 0.4);
-    cols.push(shape(r, t, (r() - 0.5) * (w - sw * 0.6), sw, sh));
+    const sw = w * (0.5 + r() * 0.3), sh = h * (i === 0 ? 1 : 0.45 + r() * 0.4);
+    cols.push(oneRock(r, t, (r() - 0.5) * (w - sw * 0.5), sw, sh));
   }
   cols.sort((a, b) => a.top - b.top);
   return cols;
 }
 
-// Раскраска колонны крупными гранями: свет справа (солнце справа сверху), тень слева.
-function paintColumn(c, col, pal, r) {
+// Раскраска: горизонтальные полосы породы, светлый верх и одно мягкое тёмное пятно слева
+// (солнце справа сверху), которое повторяет силуэт и заходит под нависающие шапки.
+function paintRock(c, col, pal, r) {
   const { pts, l, rr, top, base } = col, w = rr - l, h = base - top;
-  poly(c, pts); c.fillStyle = pal.mid; c.fill();
+  smoothPath(c, pts); c.fillStyle = pal.bands[0]; c.fill();
   c.save(); c.clip();
-  const n = Math.max(2, Math.round(w * 1.3 / pal.fw)), xt = [], xb = [];
-  for (let i = 0; i <= n; i++) {
-    const bx = l - w * 0.2 + w * 1.4 * i / n, jt = i > 0 && i < n ? (r() - 0.5) * w / n * 0.5 : 0;
-    xt.push(bx + jt); xb.push(bx + jt + (r() - 0.5) * w / n * 0.9);
+
+  const tilt = (r() - 0.5) * 0.06, n = pal.bands.length;
+  let y = top + h * (0.04 + r() * 0.05), bi = r() * n | 0;
+  while (y < base + 20) {
+    const ph = r() * TAU, f = 0.01 + r() * 0.02, a = 1 + r() * h * 0.012, y0 = y;
+    c.beginPath(); c.moveTo(l - 20, base + 40);
+    for (let x = l - 20; x <= rr + 20; x += 8) c.lineTo(x, y0 + (x - l) * tilt + Math.sin(x * f + ph) * a);
+    c.lineTo(rr + 20, base + 40); c.closePath();
+    bi = (bi + 1 + (r() < 0.3 ? 1 : 0)) % n;
+    c.fillStyle = pal.bands[bi]; c.fill();
+    y += h * (0.05 + r() * 0.09) + 4;
   }
-  const fx = (i, y) => xt[i] + (xb[i] - xt[i]) * ((y - top) / h);
-  for (let i = 0; i < n; i++) {
-    const t = (i + 0.5) / n, s = t < 0.3 ? 1 : t < 0.52 ? 2 : 3;
-    const m = 1 + (r() * 3 | 0), cuts = [{ y: top - 30, k: 0 }];
-    for (let k = 1; k < m; k++) cuts.push({ y: top + h * k / m + (r() - 0.5) * h * 0.15, k: (r() - 0.5) * 1.6 });
-    cuts.push({ y: base + 30, k: 0 });
-    for (let k = 0; k < m; k++) {
-      const q = r();
-      const sh = q < 0.25 ? Math.max(0, s - 1) : q > 0.78 ? Math.min(3, s + 1) : s;
-      const a = cuts[k], b = cuts[k + 1], dx = xt[i + 1] - xt[i];
-      poly(c, [[fx(i, a.y), a.y], [fx(i + 1, a.y), a.y + a.k * dx], [fx(i + 1, b.y), b.y + b.k * dx], [fx(i, b.y), b.y]]);
-      c.fillStyle = pal[SH[sh]]; c.fill();
-    }
-    if (s === 3 && r() < 0.6) {
-      c.beginPath(); c.moveTo(fx(i, top), top); c.lineTo(fx(i, base), base);
-      c.lineWidth = 2; c.strokeStyle = pal.edge; c.globalAlpha = 0.5; c.stroke(); c.globalAlpha = 1;
-    }
-    if (r() < 0.3) {
-      const d = 2 + r() * 3;
-      poly(c, [[fx(i, top), top], [fx(i, top) + d, top], [fx(i, base) + d, base], [fx(i, base), base]]);
-      c.fillStyle = pal.deep; c.fill();
-    }
-  }
-  // Крупные треугольные сколы, как на образце.
-  const nt = 2 + (r() * 3 | 0);
-  for (let k = 0; k < nt; k++) {
-    const tx = l + r() * w, ty = top + h * (0.1 + r() * 0.7), ts = w * (0.25 + r() * 0.35);
-    poly(c, [[tx, ty], [tx + ts * (r() - 0.3), ty + ts * (0.6 + r())], [tx - ts * (0.3 + r() * 0.5), ty + ts * (0.3 + r() * 0.8)]]);
-    c.fillStyle = (tx - l) / w > 0.5 ? pal.lit : pal.dark; c.globalAlpha = 0.85; c.fill();
-    c.globalAlpha = 1;
-  }
-  // Светлая «крышка» по верхней кромке.
-  const capPts = pts.filter(p => p[1] < top + h * 0.14);
-  if (capPts.length >= 2) {
-    const d = Math.min(18, h * 0.06 + 6), cap = capPts.map(p => [p[0], p[1] - 2]);
-    for (let i = capPts.length - 1; i >= 0; i--) cap.push([capPts[i][0] - 3, capPts[i][1] + d]);
-    poly(c, cap); c.fillStyle = pal.top; c.globalAlpha = 0.9; c.fill(); c.globalAlpha = 1;
-  }
-  // Трещины: ломаная тёмная щель со светлой кромкой справа.
-  for (let k = 0; k < (col.cracks || 0); k++) {
-    let x = l + w * (0.2 + r() * 0.6), y = top + h * (0.02 + r() * 0.2);
-    const len = h * (0.3 + r() * 0.45), seg = 5, pts2 = [[x, y]];
-    for (let i = 0; i < seg; i++) { x += (r() - 0.5) * w * 0.12; y += len / seg; pts2.push([x, y]); }
-    const wd = Math.max(2.5, w * 0.025);
-    poly(c, [...pts2.map(p => [p[0] - wd * 0.5, p[1]]), ...pts2.slice().reverse().map((p, i) => [p[0] + wd * (0.5 + 0.5 * (i / seg)), p[1]])]);
-    c.fillStyle = pal.deep; c.fill();
-    c.beginPath(); pts2.forEach((p, i) => i ? c.lineTo(p[0] + wd * 1.2, p[1]) : c.moveTo(p[0] + wd * 1.2, p[1]));
-    c.lineWidth = 1.5; c.strokeStyle = pal.edge; c.globalAlpha = 0.6; c.stroke(); c.globalAlpha = 1;
-  }
-  // Горизонтальные уступы.
-  const nl = Math.max(1, h / 90 | 0);
-  for (let k = 0; k < nl; k++) {
-    const ly = top + h * (0.25 + r() * 0.6), lx = l + r() * w * 0.4, lw = w * (0.3 + r() * 0.5), sl = (r() - 0.5) * 10;
-    poly(c, [[lx, ly], [lx + lw, ly + sl], [lx + lw, ly + sl + 5], [lx, ly + 4]]);
-    c.fillStyle = pal.deep; c.globalAlpha = 0.7; c.fill();
-    poly(c, [[lx, ly - 3], [lx + lw, ly + sl - 3], [lx + lw, ly + sl], [lx, ly]]);
-    c.fillStyle = pal.top; c.globalAlpha = 0.7; c.fill(); c.globalAlpha = 1;
-  }
+  c.beginPath(); c.moveTo(l - 20, top - 20);
+  for (let x = l - 20; x <= rr + 20; x += 8) c.lineTo(x, top + 3 + h * 0.015 + Math.sin(x * 0.05) * 1.2);
+  c.lineTo(rr + 20, top - 20); c.closePath();
+  c.fillStyle = pal.top; c.fill();
+
+  // Тень: силуэт минус тот же силуэт, сдвинутый к солнцу.
+  const m = c.getTransform(), t = document.createElement('canvas');
+  t.width = c.canvas.width; t.height = c.canvas.height;
+  const tc = t.getContext('2d');
+  tc.setTransform(m);
+  smoothPath(tc, pts); tc.fillStyle = pal.shadow; tc.fill();
+  tc.globalCompositeOperation = 'destination-out';
+  tc.translate(Math.max(8, Math.min(w * 0.36, 60)), -Math.max(4, h * 0.03));
+  smoothPath(tc, pts); tc.fill();
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalAlpha = pal.shadowA;
+  c.filter = `blur(${(1.5 * m.a).toFixed(1)}px)`;
+  c.drawImage(t, 0, 0);
+  c.filter = 'none'; c.globalAlpha = 1;
+  c.setTransform(m);
+
   if (pal.ao) {
-    const g = c.createLinearGradient(0, base - h * 0.35, 0, base);
+    const g = c.createLinearGradient(0, base - h * 0.3, 0, base);
     g.addColorStop(0, 'rgba(70,20,35,0)'); g.addColorStop(1, `rgba(70,20,35,${pal.ao})`);
-    c.fillStyle = g; c.fillRect(l - w, base - h * 0.35, w * 3, h * 0.35 + 20);
+    c.fillStyle = g; c.fillRect(l - 20, base - h * 0.3, w + 40, h * 0.3 + 20);
   }
   if (pal.haze) {
-    c.fillStyle = `rgba(${HAZE},${pal.haze})`; c.fillRect(l - w, top - 10, w * 3, h + 40);
+    c.fillStyle = `rgba(${HAZE},${pal.haze})`; c.fillRect(l - 20, top - 10, w + 40, h + 40);
     const g = c.createLinearGradient(0, base - h * 0.5, 0, base);
     g.addColorStop(0, `rgba(${HAZE},0)`); g.addColorStop(1, `rgba(${HAZE},${pal.haze * 2})`);
-    c.fillStyle = g; c.fillRect(l - w, base - h * 0.5, w * 3, h * 0.5 + 20);
+    c.fillStyle = g; c.fillRect(l - 20, base - h * 0.5, w + 40, h * 0.5 + 20);
   }
   c.restore();
 }
@@ -336,7 +246,7 @@ function sprite(key, build) {
   c.setTransform(scale, 0, 0, scale, -x0 * scale, -y0 * scale);
   if (d.shadow) { poly(c, d.shadow); c.fillStyle = 'rgba(120,45,75,0.28)'; c.fill(); }
   const r = rng(d.seed);
-  for (const col of d.cols) paintColumn(c, col, d.pal, r);
+  for (const col of d.cols) paintRock(c, col, d.pal, r);
   s = { cv, ox: x0, oy: y0 };
   sprites.set(key, s);
   return s;
@@ -375,11 +285,11 @@ function rowItems(row, ri, out) {
   if (row.kind === 'hero') {
     out.push({ z, draw: () => drawSprite(sprite('hero', () => {
       const r = rng(777), cols = [];
-      cols.push(flatColumn(rng(11), -40, 150, 215));
-      cols.push(column(rng(12), 55, 110, 190));
-      cols.push(flatColumn(rng(13), -95, 90, 150));
-      cols.push(column(rng(14), 15, 120, 120));
-      cols.push(flatColumn(rng(15), 110, 120, 95));
+      cols.push(mesa(rng(11), -40, 170, 215, 0.75));
+      cols.push(pillar(rng(12), 80, 50, 205));
+      cols.push(mesa(rng(13), -105, 130, 125, 0.7));
+      cols.push(pillar(rng(14), 15, 38, 150));
+      cols.push(mesa(rng(15), 120, 120, 90, 0.65));
       return { cols, pal: PAL.far, seed: r() * 1e9 | 0 };
     }), sxGround(HERO_O, z), y) });
     return;
@@ -528,7 +438,7 @@ function drawRange() {
     const o = (i + r()) * cell, w = 180 + r() * 260, h = 25 + r() * 55, seed = r() * 1e9 | 0;
     drawSprite(sprite(`range:${i}`, () => {
       const rr = rng(seed);
-      return { cols: [flatColumn(rr, 0, w, h)], pal: PAL.range, seed: rr() * 1e9 | 0 };
+      return { cols: [mesa(rr, 0, w, h, 0.6 + rr() * 0.2)], pal: PAL.range, seed: rr() * 1e9 | 0 };
     }), viewW / 2 + o - shift, y);
   }
 }
